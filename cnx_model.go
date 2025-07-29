@@ -26,63 +26,63 @@ const (
 
 type Message struct {
 	recvTopic string
-	recvAt time.Time
-	data []byte
+	recvAt    time.Time
+	data      []byte
 }
 
 type Subscription struct {
-	topic string
-	messages *[]Message 
+	topic      string
+	messages   *[]Message
 	messagesMu *sync.Mutex
 	messageIdx int
-	qos byte
+	qos        byte
 }
 
 type CnxModel struct {
-	broker string
-	port int
+	broker   string
+	port     int
 	clientId string
 
 	client mqtt.Client
 
 	connectionState *atomic.Int32
-	subscriptions list.Model
-	spinner spinner.Model
-	subscritionIdx int
-	windowSize struct {
+	subscriptions   list.Model
+	spinner         spinner.Model
+	subscritionIdx  int
+	windowSize      struct {
 		height int
-		width int
+		width  int
 	}
 }
 
-var defaultMessages = []Message {
+var defaultMessages = []Message{
 	{
 		recvTopic: "test/1",
-		recvAt: time.Date(2025, time.July, 27, 0, 0, 0, 0, time.UTC),
-		data: []byte("hello world"),
+		recvAt:    time.Date(2025, time.July, 27, 0, 0, 0, 0, time.UTC),
+		data:      []byte("hello world"),
 	},
 	{
 		recvTopic: "test/2",
-		recvAt: time.Date(2025, time.July, 27, 0, 0, 0, 0, time.UTC),
-		data: []byte("{\"hello\": \"world\"}"),
+		recvAt:    time.Date(2025, time.July, 27, 0, 0, 0, 0, time.UTC),
+		data:      []byte("{\"hello\": \"world\"}"),
 	},
 }
 
 var defaultSub = Subscription{
-	topic: fmt.Sprintf("topic/#"),
-	messages: &[]Message{},
+	topic:      fmt.Sprintf("topic/#"),
+	messages:   &[]Message{},
 	messagesMu: &sync.Mutex{},
 }
 
 // Styles
 var (
 	borderStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("238"))
-	spinnerStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("238"))
+	spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 )
 
-func NewCnxModel(broker string, port int, clientID string, initSubs []Subscription) tea.Model {	
+func NewCnxModel(broker string, port int, clientID string, initSubs []Subscription) tea.Model {
 	delegate := list.NewDefaultDelegate()
 	items := make([]list.Item, 0)
 	if initSubs != nil {
@@ -90,21 +90,21 @@ func NewCnxModel(broker string, port int, clientID string, initSubs []Subscripti
 			items = append(items, sub)
 		}
 	}
-		
+
 	delegate.ShowDescription = false
 	subs := list.New(items, delegate, 10, 10)
 	subs.SetShowTitle(false)
 
 	m := CnxModel{
-		broker: broker,
-		port: port,
-		clientId: clientID,
-		subscriptions: subs,
+		broker:          broker,
+		port:            port,
+		clientId:        clientID,
+		subscriptions:   subs,
 		connectionState: &atomic.Int32{},
-		spinner: spinner.New(spinner.WithSpinner(spinner.Ellipsis), spinner.WithStyle(spinnerStyle)),
+		spinner:         spinner.New(spinner.WithSpinner(spinner.Ellipsis), spinner.WithStyle(spinnerStyle)),
 	}
 
-	opts := mqtt.NewClientOptions()	
+	opts := mqtt.NewClientOptions()
 	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", m.broker, m.port))
 	opts.SetClientID(m.clientId)
 	opts.SetDefaultPublishHandler(m.onPubHandler)
@@ -131,9 +131,9 @@ func (s Subscription) onPubHandler(client mqtt.Client, msg mqtt.Message) {
 	defer s.messagesMu.Unlock()
 	m := *s.messages
 	m = append(m, Message{
-		recvTopic: msg.Topic(), 
-		recvAt: time.Now(), 
-		data: msg.Payload(),})
+		recvTopic: msg.Topic(),
+		recvAt:    time.Now(),
+		data:      msg.Payload()})
 	s.messages = &m
 }
 
@@ -148,7 +148,7 @@ func (m CnxModel) onConnectHandler(client mqtt.Client) {
 }
 
 func (m CnxModel) onConnectionLostHandler(client mqtt.Client, err error) {
-	os.WriteFile("mqttui.log", []byte("connection lost: " + err.Error() + "\n"), 0666)
+	os.WriteFile("mqttui.log", []byte("connection lost: "+err.Error()+"\n"), 0666)
 	m.connectionState.Store(connectionStateDisconnected)
 }
 
@@ -157,8 +157,8 @@ func (m CnxModel) onReconnectingHandler(client mqtt.Client, opts *mqtt.ClientOpt
 	m.connectionState.Store(connectionStateReconnecting)
 }
 
-func (m CnxModel) onConnectAttemptHandler(broker *url.URL, tlsCfg *tls.Config) *tls.Config{
-	os.WriteFile("mqttui.log", []byte("connecting to " + broker.String() + "\n"), 0666)
+func (m CnxModel) onConnectAttemptHandler(broker *url.URL, tlsCfg *tls.Config) *tls.Config {
+	os.WriteFile("mqttui.log", []byte("connecting to "+broker.String()+"\n"), 0666)
 	m.connectionState.Store(connectionStateConnecting)
 	return tlsCfg
 }
@@ -168,7 +168,7 @@ func (m CnxModel) Init() tea.Cmd {
 	os.WriteFile("mqttui.log", []byte("initialized\n"), 0666)
 
 	m.client.Connect()
-    return m.spinner.Tick
+	return m.spinner.Tick
 }
 
 var itemCounter = 0
@@ -176,12 +176,12 @@ var itemCounter = 0
 func (m CnxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.subscriptions.Update(msg)
 
-    switch msg := msg.(type) {
-    case tea.KeyMsg:
-        switch msg.String() {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
 
-        case "ctrl+c", "q":
-            return m, tea.Quit
+		case "ctrl+c", "q":
+			return m, tea.Quit
 		case "a":
 			items := m.subscriptions.Items()
 			items = append(items, defaultSub)
@@ -220,7 +220,7 @@ func (m CnxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(messages) == 0 {
 				break
 			}
-			sub.messageIdx = min(len(messages) - 1, sub.messageIdx+1)
+			sub.messageIdx = min(len(messages)-1, sub.messageIdx+1)
 			m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
 			sub.messagesMu.Unlock()
 		}
@@ -232,7 +232,7 @@ func (m CnxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 	}
-    return m, nil
+	return m, nil
 }
 
 func (m CnxModel) View() string {
@@ -250,7 +250,7 @@ func (m CnxModel) connectingView() string {
 }
 
 func (m CnxModel) defaultView() string {
-	m.subscriptions.SetSize(27, m.windowSize.height - 12)
+	m.subscriptions.SetSize(27, m.windowSize.height-12)
 	subsListView := borderStyle.Render(m.subscriptions.View())
 
 	l := lipgloss.Place(27, 6, lipgloss.Left, lipgloss.Top, "")
@@ -264,18 +264,18 @@ func (m CnxModel) defaultView() string {
 	clientIdView := borderStyle.Render(clientId.View())
 	leftView := lipgloss.JoinVertical(lipgloss.Top, brokerView, clientIdView, subsListView)
 
-	recvTopic := viewport.New(m.windowSize.width - 44, 1)
+	recvTopic := viewport.New(m.windowSize.width-44, 1)
 	messageNr := viewport.New(7, 1)
-	recvAt := viewport.New(m.windowSize.width - 35, 1)
-	data := viewport.New(m.windowSize.width - 35, m.windowSize.height - (6 + 6))
+	recvAt := viewport.New(m.windowSize.width-35, 1)
+	data := viewport.New(m.windowSize.width-35, m.windowSize.height-(6+6))
 	subItems := m.subscriptions.Items()
 
-	if (len(subItems) > 0) {
+	if len(subItems) > 0 {
 		sub, _ := subItems[m.subscriptions.GlobalIndex()].(Subscription)
 		sub.messagesMu.Lock()
 		messages := *sub.messages
 		messageNr.SetContent(fmt.Sprintf("%d/%d", sub.messageIdx, len(messages)))
-		if (len(messages) > 0) {
+		if len(messages) > 0 {
 			message := messages[sub.messageIdx]
 			recvTopic.SetContent(string(message.recvTopic))
 			recvAt.SetContent(string(message.recvAt.String()))
@@ -294,4 +294,3 @@ func (m CnxModel) defaultView() string {
 	s := lipgloss.JoinHorizontal(lipgloss.Left, leftView, messagesView)
 	return borderStyle.Render(s)
 }
-
