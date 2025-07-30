@@ -112,8 +112,6 @@ func (m Model) Init() tea.Cmd {
 	return m.spinner.Tick
 }
 
-var itemCounter = 0
-
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.subscriptions.Update(msg)
 
@@ -126,7 +124,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "a":
 			items := m.subscriptions.Items()
 			items = append(items, defaultSub)
-			itemCounter++
 			m.client.Subscribe(defaultSub.Topic, defaultSub.Qos, defaultSub.OnPubHandler)
 			m.subscriptions.SetItems(items)
 			// TODO: show subscription dialog
