@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/url"
-	"os"
 	"sync/atomic"
 
 	"github.com/OmegaRelay/mqtt-tui/subscription"
@@ -89,35 +88,26 @@ func NewModel(broker string, port int, clientID string, initSubs []subscription.
 }
 
 func (m Model) onPubHandler(client mqtt.Client, msg mqtt.Message) {
-	s := fmt.Sprintf("Pub received on %s; %s\n", msg.Topic(), string(msg.Payload()))
-	os.WriteFile("mqttui.log", []byte(s), 0666)
 }
 
 func (m Model) onConnectHandler(client mqtt.Client) {
-	os.WriteFile("mqttui.log", []byte("connected\n"), 0666)
 	m.connectionState.Store(connectionStateConnected)
 }
 
 func (m Model) onConnectionLostHandler(client mqtt.Client, err error) {
-	os.WriteFile("mqttui.log", []byte("connection lost: "+err.Error()+"\n"), 0666)
 	m.connectionState.Store(connectionStateDisconnected)
 }
 
 func (m Model) onReconnectingHandler(client mqtt.Client, opts *mqtt.ClientOptions) {
-	os.WriteFile("mqttui.log", []byte("reconnecting\n"), 0666)
 	m.connectionState.Store(connectionStateReconnecting)
 }
 
 func (m Model) onConnectAttemptHandler(broker *url.URL, tlsCfg *tls.Config) *tls.Config {
-	os.WriteFile("mqttui.log", []byte("connecting to "+broker.String()+"\n"), 0666)
 	m.connectionState.Store(connectionStateConnecting)
 	return tlsCfg
 }
 
 func (m Model) Init() tea.Cmd {
-
-	os.WriteFile("mqttui.log", []byte("initialized\n"), 0666)
-
 	m.client.Connect()
 	return m.spinner.Tick
 }

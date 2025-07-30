@@ -3,8 +3,6 @@ package subscription
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
-	"os"
 	"sync"
 	"time"
 
@@ -43,9 +41,6 @@ func (m Model) Description() string { return "" }
 func (m Model) FilterValue() string { return m.Topic }
 
 func (m Model) OnPubHandler(client mqtt.Client, msg mqtt.Message) {
-	str := fmt.Sprintf("subscription: Pub received on %s; %s\n", msg.Topic(), string(msg.Payload()))
-	os.WriteFile("mqttui.log", []byte(str), 0666)
-
 	var data []byte
 	data = msg.Payload()
 	switch m.Format {
