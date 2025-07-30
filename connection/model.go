@@ -1,4 +1,4 @@
-package main
+package connection
 
 import (
 	"crypto/tls"
@@ -38,7 +38,7 @@ type Subscription struct {
 	qos        byte
 }
 
-type CnxModel struct {
+type Model struct {
 	broker   string
 	port     int
 	clientId string
@@ -75,8 +75,7 @@ func newSubscription(topic string) Subscription {
 	return s
 }
 
-func NewCnxModel(broker string, port int, clientID string, initSubs []Subscription) tea.Model {
-
+func NewModel(broker string, port int, clientID string, initSubs []Subscription) Model {
 	delegate := list.NewDefaultDelegate()
 	items := make([]list.Item, 0)
 	if initSubs != nil {
@@ -89,7 +88,7 @@ func NewCnxModel(broker string, port int, clientID string, initSubs []Subscripti
 	subs := list.New(items, delegate, 10, 10)
 	subs.SetShowTitle(false)
 
-	m := CnxModel{
+	m := Model{
 		broker:          broker,
 		port:            port,
 		clientId:        clientID,
@@ -135,33 +134,33 @@ func (s Subscription) onPubHandler(client mqtt.Client, msg mqtt.Message) {
 	s.messages <- m
 }
 
-func (m CnxModel) onPubHandler(client mqtt.Client, msg mqtt.Message) {
+func (m Model) onPubHandler(client mqtt.Client, msg mqtt.Message) {
 	s := fmt.Sprintf("Pub received on %s; %s\n", msg.Topic(), string(msg.Payload()))
 	os.WriteFile("mqttui.log", []byte(s), 0666)
 }
 
-func (m CnxModel) onConnectHandler(client mqtt.Client) {
+func (m Model) onConnectHandler(client mqtt.Client) {
 	os.WriteFile("mqttui.log", []byte("connected\n"), 0666)
 	m.connectionState.Store(connectionStateConnected)
 }
 
-func (m CnxModel) onConnectionLostHandler(client mqtt.Client, err error) {
+func (m Model) onConnectionLostHandler(client mqtt.Client, err error) {
 	os.WriteFile("mqttui.log", []byte("connection lost: "+err.Error()+"\n"), 0666)
 	m.connectionState.Store(connectionStateDisconnected)
 }
 
-func (m CnxModel) onReconnectingHandler(client mqtt.Client, opts *mqtt.ClientOptions) {
+func (m Model) onReconnectingHandler(client mqtt.Client, opts *mqtt.ClientOptions) {
 	os.WriteFile("mqttui.log", []byte("reconnecting\n"), 0666)
 	m.connectionState.Store(connectionStateReconnecting)
 }
 
-func (m CnxModel) onConnectAttemptHandler(broker *url.URL, tlsCfg *tls.Config) *tls.Config {
+func (m Model) onConnectAttemptHandler(broker *url.URL, tlsCfg *tls.Config) *tls.Config {
 	os.WriteFile("mqttui.log", []byte("connecting to "+broker.String()+"\n"), 0666)
 	m.connectionState.Store(connectionStateConnecting)
 	return tlsCfg
 }
 
-func (m CnxModel) Init() tea.Cmd {
+func (m Model) Init() tea.Cmd {
 
 	os.WriteFile("mqttui.log", []byte("initialized\n"), 0666)
 
@@ -171,7 +170,7 @@ func (m CnxModel) Init() tea.Cmd {
 
 var itemCounter = 0
 
-func (m CnxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.subscriptions.Update(msg)
 
 	switch msg := msg.(type) {
@@ -235,7 +234,7 @@ func (m CnxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m CnxModel) View() string {
+func (m Model) View() string {
 	state := m.connectionState.Load()
 
 	if state == connectionStateConnecting {
@@ -245,11 +244,11 @@ func (m CnxModel) View() string {
 	}
 }
 
-func (m CnxModel) connectingView() string {
+func (m Model) connectingView() string {
 	return fmt.Sprintf("Connecting to broker on %s:%d%s", m.broker, m.port, m.spinner.View())
 }
 
-func (m CnxModel) defaultView() string {
+func (m Model) defaultView() string {
 	m.subscriptions.SetSize(27, m.windowSize.height-12)
 	subsListView := borderStyle.Render(m.subscriptions.View())
 

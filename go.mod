@@ -1,6 +1,8 @@
-module main.go
+module github.com/OmegaRelay/mqtt-tui
 
-go 1.24.5
+go 1.23.0
+
+toolchain go1.23.11
 
 require (
 	github.com/charmbracelet/bubbles v0.21.0
