@@ -41,7 +41,7 @@ type Model struct {
 	}
 }
 
-var defaultSub = subscription.NewModel("topic/#")
+var defaultSub = subscription.NewModel("topic/#", 0, "json")
 
 // Styles
 var (
