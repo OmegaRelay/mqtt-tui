@@ -24,11 +24,8 @@ type Model struct {
 	messageIdx int
 }
 
-func NewModel(topic string, qos byte, format string) Model {
+func NewModel() Model {
 	s := Model{
-		Topic:      topic,
-		Qos:        qos,
-		Format:     format,
 		messages:   make(chan []Message, 1),
 		messagesMu: &sync.Mutex{},
 	}
