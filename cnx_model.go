@@ -32,7 +32,7 @@ type Message struct {
 
 type Subscription struct {
 	topic      string
-	messages   *[]Message
+	messages   chan []Message
 	messagesMu *sync.Mutex
 	messageIdx int
 	qos        byte
@@ -55,24 +55,7 @@ type CnxModel struct {
 	}
 }
 
-var defaultMessages = []Message{
-	{
-		recvTopic: "test/1",
-		recvAt:    time.Date(2025, time.July, 27, 0, 0, 0, 0, time.UTC),
-		data:      []byte("hello world"),
-	},
-	{
-		recvTopic: "test/2",
-		recvAt:    time.Date(2025, time.July, 27, 0, 0, 0, 0, time.UTC),
-		data:      []byte("{\"hello\": \"world\"}"),
-	},
-}
-
-var defaultSub = Subscription{
-	topic:      fmt.Sprintf("topic/#"),
-	messages:   &[]Message{},
-	messagesMu: &sync.Mutex{},
-}
+var defaultSub = newSubscription("topic/#")
 
 // Styles
 var (
@@ -82,7 +65,18 @@ var (
 	spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 )
 
+func newSubscription(topic string) Subscription {
+	s := Subscription{
+		topic:      topic,
+		messages:   make(chan []Message, 1),
+		messagesMu: &sync.Mutex{},
+	}
+	s.messages <- make([]Message, 0)
+	return s
+}
+
 func NewCnxModel(broker string, port int, clientID string, initSubs []Subscription) tea.Model {
+
 	delegate := list.NewDefaultDelegate()
 	items := make([]list.Item, 0)
 	if initSubs != nil {
@@ -129,12 +123,16 @@ func (s Subscription) onPubHandler(client mqtt.Client, msg mqtt.Message) {
 
 	s.messagesMu.Lock()
 	defer s.messagesMu.Unlock()
-	m := *s.messages
-	m = append(m, Message{
+	n := Message{
 		recvTopic: msg.Topic(),
 		recvAt:    time.Now(),
-		data:      msg.Payload()})
-	s.messages = &m
+		data:      msg.Payload(),
+	}
+
+	m := <-s.messages
+	m = append([]Message{n}, m...)
+
+	s.messages <- m
 }
 
 func (m CnxModel) onPubHandler(client mqtt.Client, msg mqtt.Message) {
@@ -202,13 +200,14 @@ func (m CnxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			sub := items[m.subscriptions.GlobalIndex()].(Subscription)
 			sub.messagesMu.Lock()
-			messages := *sub.messages
+			messages := <-sub.messages
+			sub.messages <- messages
+			sub.messagesMu.Unlock()
 			if len(messages) == 0 {
 				break
 			}
 			sub.messageIdx = max(0, sub.messageIdx-1)
 			m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
-			sub.messagesMu.Unlock()
 		case "l":
 			items := m.subscriptions.Items()
 			if len(items) == 0 {
@@ -216,13 +215,14 @@ func (m CnxModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			sub := items[m.subscriptions.GlobalIndex()].(Subscription)
 			sub.messagesMu.Lock()
-			messages := *sub.messages
+			messages := <-sub.messages
+			sub.messages <- messages
+			sub.messagesMu.Unlock()
 			if len(messages) == 0 {
 				break
 			}
 			sub.messageIdx = min(len(messages)-1, sub.messageIdx+1)
 			m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
-			sub.messagesMu.Unlock()
 		}
 	case tea.WindowSizeMsg:
 		m.windowSize.height = msg.Height
@@ -273,7 +273,9 @@ func (m CnxModel) defaultView() string {
 	if len(subItems) > 0 {
 		sub, _ := subItems[m.subscriptions.GlobalIndex()].(Subscription)
 		sub.messagesMu.Lock()
-		messages := *sub.messages
+		messages := <-sub.messages
+		sub.messages <- messages
+		sub.messagesMu.Unlock()
 		messageNr.SetContent(fmt.Sprintf("%d/%d", sub.messageIdx, len(messages)))
 		if len(messages) > 0 {
 			message := messages[sub.messageIdx]
@@ -281,7 +283,6 @@ func (m CnxModel) defaultView() string {
 			recvAt.SetContent(string(message.recvAt.String()))
 			data.SetContent(string(message.data))
 		}
-		sub.messagesMu.Unlock()
 	}
 	recvTopicView := borderStyle.Render(recvTopic.View())
 	messageNrView := borderStyle.Render(messageNr.View())
