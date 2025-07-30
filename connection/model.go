@@ -5,10 +5,9 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"sync"
 	"sync/atomic"
-	"time"
 
+	"github.com/OmegaRelay/mqtt-tui/subscription"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -24,20 +23,6 @@ const (
 	connectionStateDisconnected
 )
 
-type Message struct {
-	recvTopic string
-	recvAt    time.Time
-	data      []byte
-}
-
-type Subscription struct {
-	topic      string
-	messages   chan []Message
-	messagesMu *sync.Mutex
-	messageIdx int
-	qos        byte
-}
-
 type Model struct {
 	broker   string
 	port     int
@@ -47,6 +32,7 @@ type Model struct {
 
 	connectionState *atomic.Int32
 	subscriptions   list.Model
+	messageIdx      int
 	spinner         spinner.Model
 	subscritionIdx  int
 	windowSize      struct {
@@ -55,7 +41,7 @@ type Model struct {
 	}
 }
 
-var defaultSub = newSubscription("topic/#")
+var defaultSub = subscription.NewModel("topic/#")
 
 // Styles
 var (
@@ -65,17 +51,7 @@ var (
 	spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 )
 
-func newSubscription(topic string) Subscription {
-	s := Subscription{
-		topic:      topic,
-		messages:   make(chan []Message, 1),
-		messagesMu: &sync.Mutex{},
-	}
-	s.messages <- make([]Message, 0)
-	return s
-}
-
-func NewModel(broker string, port int, clientID string, initSubs []Subscription) Model {
+func NewModel(broker string, port int, clientID string, initSubs []subscription.Model) Model {
 	delegate := list.NewDefaultDelegate()
 	items := make([]list.Item, 0)
 	if initSubs != nil {
@@ -110,28 +86,6 @@ func NewModel(broker string, port int, clientID string, initSubs []Subscription)
 	m.client = mqtt.NewClient(opts)
 
 	return m
-}
-
-func (s Subscription) Title() string       { return s.topic }
-func (s Subscription) Description() string { return "" }
-func (s Subscription) FilterValue() string { return s.topic }
-
-func (s Subscription) onPubHandler(client mqtt.Client, msg mqtt.Message) {
-	str := fmt.Sprintf("subscription: Pub received on %s; %s\n", msg.Topic(), string(msg.Payload()))
-	os.WriteFile("mqttui.log", []byte(str), 0666)
-
-	s.messagesMu.Lock()
-	defer s.messagesMu.Unlock()
-	n := Message{
-		recvTopic: msg.Topic(),
-		recvAt:    time.Now(),
-		data:      msg.Payload(),
-	}
-
-	m := <-s.messages
-	m = append([]Message{n}, m...)
-
-	s.messages <- m
 }
 
 func (m Model) onPubHandler(client mqtt.Client, msg mqtt.Message) {
@@ -183,44 +137,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			items := m.subscriptions.Items()
 			items = append(items, defaultSub)
 			itemCounter++
-			m.client.Subscribe(defaultSub.topic, defaultSub.qos, defaultSub.onPubHandler)
+			m.client.Subscribe(defaultSub.Topic, defaultSub.Qos, defaultSub.OnPubHandler)
 			m.subscriptions.SetItems(items)
 			// TODO: show subscription dialog
 		case "r":
 			m.subscriptions.RemoveItem(m.subscriptions.GlobalIndex())
 		case "j":
+			m.messageIdx = 0
 			m.subscriptions.CursorDown()
 		case "k":
+			m.messageIdx = 0
 			m.subscriptions.CursorUp()
 		case "h":
 			items := m.subscriptions.Items()
 			if len(items) == 0 {
 				break
 			}
-			sub := items[m.subscriptions.GlobalIndex()].(Subscription)
-			sub.messagesMu.Lock()
-			messages := <-sub.messages
-			sub.messages <- messages
-			sub.messagesMu.Unlock()
+			sub := items[m.subscriptions.GlobalIndex()].(subscription.Model)
+			messages := sub.Messages()
 			if len(messages) == 0 {
 				break
 			}
-			sub.messageIdx = max(0, sub.messageIdx-1)
+			m.messageIdx = max(0, m.messageIdx-1)
 			m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
 		case "l":
 			items := m.subscriptions.Items()
 			if len(items) == 0 {
 				break
 			}
-			sub := items[m.subscriptions.GlobalIndex()].(Subscription)
-			sub.messagesMu.Lock()
-			messages := <-sub.messages
-			sub.messages <- messages
-			sub.messagesMu.Unlock()
+			sub := items[m.subscriptions.GlobalIndex()].(subscription.Model)
+			messages := sub.Messages()
 			if len(messages) == 0 {
 				break
 			}
-			sub.messageIdx = min(len(messages)-1, sub.messageIdx+1)
+			m.messageIdx = min(len(messages)-1, m.messageIdx+1)
 			m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
 		}
 	case tea.WindowSizeMsg:
@@ -270,17 +220,14 @@ func (m Model) defaultView() string {
 	subItems := m.subscriptions.Items()
 
 	if len(subItems) > 0 {
-		sub, _ := subItems[m.subscriptions.GlobalIndex()].(Subscription)
-		sub.messagesMu.Lock()
-		messages := <-sub.messages
-		sub.messages <- messages
-		sub.messagesMu.Unlock()
-		messageNr.SetContent(fmt.Sprintf("%d/%d", sub.messageIdx, len(messages)))
+		sub, _ := subItems[m.subscriptions.GlobalIndex()].(subscription.Model)
+		messages := sub.Messages()
+		messageNr.SetContent(fmt.Sprintf("%d/%d", min(m.messageIdx+1, len(messages)), len(messages)))
 		if len(messages) > 0 {
-			message := messages[sub.messageIdx]
-			recvTopic.SetContent(string(message.recvTopic))
-			recvAt.SetContent(string(message.recvAt.String()))
-			data.SetContent(string(message.data))
+			message := messages[m.messageIdx]
+			recvTopic.SetContent(string(message.RecvTopic()))
+			recvAt.SetContent(string(message.RecvAt().String()))
+			data.SetContent(string(message.Data()))
 		}
 	}
 	recvTopicView := borderStyle.Render(recvTopic.View())
