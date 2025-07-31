@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 
 	"github.com/Broderick-Westrope/charmutils"
+	"github.com/OmegaRelay/mqtt-tui/styles"
 	"github.com/OmegaRelay/mqtt-tui/subscription"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -41,6 +42,7 @@ type newSubModel struct {
 }
 
 type Model struct {
+	name     string
 	broker   string
 	port     int
 	clientId string
@@ -61,20 +63,9 @@ type Model struct {
 	}
 }
 
-// Styles
-var (
-	focusedBorderStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("38"))
+var spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 
-	blurredBorderStyle = lipgloss.NewStyle().
-				Border(lipgloss.RoundedBorder()).
-				BorderForeground(lipgloss.Color("238"))
-
-	spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
-)
-
-func NewModel(broker string, port int, clientID string, initSubs []subscription.Model) Model {
+func NewModel(name, broker string, port int, clientID string, initSubs []subscription.Model) Model {
 	delegate := list.NewDefaultDelegate()
 	items := make([]list.Item, 0)
 	if initSubs != nil {
@@ -88,6 +79,7 @@ func NewModel(broker string, port int, clientID string, initSubs []subscription.
 	subs.SetShowTitle(false)
 
 	m := Model{
+		name:            name,
 		broker:          broker,
 		port:            port,
 		clientId:        clientID,
@@ -115,6 +107,10 @@ func NewModel(broker string, port int, clientID string, initSubs []subscription.
 
 	return m
 }
+
+func (m Model) Title() string       { return m.name }
+func (m Model) Description() string { return fmt.Sprintf("%s:%d", m.broker, m.port) }
+func (m Model) FilterValue() string { return m.name }
 
 func (m Model) onPubHandler(client mqtt.Client, msg mqtt.Message) {
 }
@@ -297,13 +293,15 @@ func (m Model) connectingView() string {
 
 func (m Model) defaultView(isBg bool) string {
 	var borderStyle lipgloss.Style
+	width, height, _ := term.GetSize(0)
+
 	if isBg {
-		borderStyle = blurredBorderStyle
+		borderStyle = styles.BlurredBorderStyle
 	} else {
-		borderStyle = focusedBorderStyle
+		borderStyle = styles.FocusedBorderStyle
 	}
 
-	m.subscriptions.SetSize(27, m.windowSize.height-12)
+	m.subscriptions.SetSize(27, height-12)
 	subsListView := borderStyle.Render(m.subscriptions.View())
 
 	l := lipgloss.Place(27, 6, lipgloss.Left, lipgloss.Top, "")
@@ -317,10 +315,10 @@ func (m Model) defaultView(isBg bool) string {
 	clientIdView := borderStyle.Render(clientId.View())
 	leftView := lipgloss.JoinVertical(lipgloss.Top, brokerView, clientIdView, subsListView)
 
-	recvTopic := viewport.New(m.windowSize.width-44, 1)
+	recvTopic := viewport.New(width-44, 1)
 	messageNr := viewport.New(7, 1)
-	recvAt := viewport.New(m.windowSize.width-35, 1)
-	data := viewport.New(m.windowSize.width-35, m.windowSize.height-(6+6))
+	recvAt := viewport.New(width-35, 1)
+	data := viewport.New(width-35, height-(6+6))
 	subItems := m.subscriptions.Items()
 
 	if len(subItems) > 0 {
@@ -351,7 +349,7 @@ func (m Model) defaultView(isBg bool) string {
 		}
 	}
 
-	return focusedBorderStyle.Render(s)
+	return styles.FocusedBorderStyle.Render(s)
 }
 
 func (m newSubModel) Init() tea.Cmd {
@@ -392,6 +390,6 @@ func (m newSubModel) View() string {
 	width, _, _ := term.GetSize(0)
 	widget := viewport.New(width-4, 9)
 	widget.SetContent(content.String())
-	return focusedBorderStyle.Render(widget.View())
+	return styles.FocusedBorderStyle.Render(widget.View())
 
 }
