@@ -10,6 +10,14 @@ import (
 	"github.com/charmbracelet/x/term"
 )
 
+const title = `███╗   ███╗ ██████╗ ████████╗████████╗    ████████╗██╗   ██╗██╗
+████╗ ████║██╔═══██╗╚══██╔══╝╚══██╔══╝    ╚══██╔══╝██║   ██║██║
+██╔████╔██║██║   ██║   ██║      ██║          ██║   ██║   ██║██║
+██║╚██╔╝██║██║▄▄ ██║   ██║      ██║          ██║   ██║   ██║██║
+██║ ╚═╝ ██║╚██████╔╝   ██║      ██║          ██║   ╚██████╔╝██║
+╚═╝     ╚═╝ ╚══▀▀═╝    ╚═╝      ╚═╝          ╚═╝    ╚═════╝ ╚═╝
+`
+
 type model struct {
 	connections list.Model
 	connection  tea.Model
@@ -81,10 +89,12 @@ func (m model) View() string {
 
 	width, height, _ := term.GetSize(0)
 	widget := viewport.New(width-2, height-2)
-	s := "MQTT TUI\n"
-	m.connections.SetHeight(height - 5)
+	s := title + "\n"
+	connectionsWidget := viewport.New(27, height-11)
+	m.connections.SetHeight(height - 11)
 	m.connections.SetWidth(width - 4)
-	s += styles.FocusedBorderStyle.Render(m.connections.View())
+	connectionsWidget.SetContent(m.connections.View())
+	s += styles.FocusedBorderStyle.Render(connectionsWidget.View())
 	widget.SetContent(s)
 	return styles.FocusedBorderStyle.Render(widget.View())
 }

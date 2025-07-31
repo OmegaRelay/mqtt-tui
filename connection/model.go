@@ -227,6 +227,8 @@ func (m Model) handleDefaultKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.messageIdx = min(len(messages)-1, m.messageIdx+1)
 		m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
+	case "esc":
+		return nil, nil
 	}
 	return m, cmd
 }
