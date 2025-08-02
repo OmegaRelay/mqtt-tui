@@ -2,8 +2,10 @@ package connection
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net/url"
+	"os"
 	"strings"
 	"sync/atomic"
 
@@ -42,14 +44,22 @@ type newSubModel struct {
 }
 
 type Data struct {
-	Name     string
-	Broker   string
-	Port     int
-	ClientId string
+	Name         string
+	Broker       string
+	Port         int
+	ClientId     string
+	Username     string
+	Password     string
+	UseTls       bool
+	Authenticate bool
+	KeyFilePath  string
+	CertFilePath string
+	CaFilePath   string
 }
 
 type Model struct {
-	data Data
+	data      Data
+	brokerUrl string
 
 	client mqtt.Client
 
@@ -91,13 +101,51 @@ func NewModel(data Data, initSubs []subscription.Model) Model {
 	}
 	m.newSub.topic = textinput.New()
 	m.newSub.topic.Cursor.Blink = true
-	m.newSub.topic.CharLimit = 32
 	m.newSub.topic.Focus()
 
 	opts := mqtt.NewClientOptions()
-	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", m.data.Broker, m.data.Port))
+
+	protocol := "mqtt://"
+	if data.UseTls {
+		protocol = "mqtts://"
+	}
+	m.brokerUrl = fmt.Sprintf("%s%s:%d", protocol, m.data.Broker, m.data.Port)
+	opts.AddBroker(m.brokerUrl)
 	opts.SetClientID(m.data.ClientId)
 	opts.SetDefaultPublishHandler(m.onPubHandler)
+	if data.Username != "" {
+		opts.SetUsername(data.Username)
+	}
+	if data.Password != "" {
+		opts.SetPassword(data.Password)
+	}
+
+	if data.UseTls {
+		tlsCfg := &tls.Config{}
+		if data.KeyFilePath != "" && data.CertFilePath != "" {
+			tlsCfg.ClientAuth = tls.RequireAndVerifyClientCert
+			cert, _ := tls.LoadX509KeyPair(data.CertFilePath, data.KeyFilePath)
+			tlsCfg = &tls.Config{
+				Certificates: []tls.Certificate{cert},
+				MinVersion:   tls.VersionTLS13,
+			}
+		}
+		if data.CaFilePath != "" {
+			caPem, err := os.ReadFile(data.CaFilePath)
+			if err == nil && caPem != nil {
+				pool := x509.NewCertPool()
+				ok := pool.AppendCertsFromPEM(caPem)
+				if ok {
+					tlsCfg.ClientCAs = pool
+				}
+			}
+		}
+		if !data.Authenticate {
+			tlsCfg.InsecureSkipVerify = true
+		}
+		opts.SetTLSConfig(tlsCfg)
+	}
+
 	opts.OnConnect = m.onConnectHandler
 	opts.OnConnectionLost = m.onConnectionLostHandler
 	opts.OnReconnecting = m.onReconnectingHandler
@@ -233,6 +281,7 @@ func (m Model) handleDefaultKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.messageIdx = min(len(messages)-1, m.messageIdx+1)
 		m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
 	case "esc":
+		m.hasConnected.Store(false)
 		return nil, nil
 	}
 	return m, cmd
@@ -295,7 +344,7 @@ func (m Model) View() string {
 }
 
 func (m Model) connectingView() string {
-	return fmt.Sprintf("Connecting to broker on %s:%d%s", m.data.Broker, m.data.Port, m.spinner.View())
+	return fmt.Sprintf("Connecting to broker on %s%s", m.brokerUrl, m.spinner.View())
 }
 
 func (m Model) defaultView(isBg bool) string {
@@ -315,7 +364,7 @@ func (m Model) defaultView(isBg bool) string {
 	l = borderStyle.Render(l)
 
 	broker := viewport.New(27, 1)
-	broker.SetContent(fmt.Sprintf("tcp://%s:%d", m.data.Broker, m.data.Port))
+	broker.SetContent(m.brokerUrl)
 	brokerView := borderStyle.Render(broker.View())
 	clientId := viewport.New(27, 1)
 	clientId.SetContent(m.data.ClientId)

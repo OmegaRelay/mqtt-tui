@@ -45,10 +45,11 @@ type newConnectionModel struct {
 		Port         textinput.Model
 		Username     textinput.Model
 		Password     textinput.Model
-		Authenticate bool
 		UseTls       bool
+		Authenticate bool
 		Keyfile      textinput.Model
 		Certfile     textinput.Model
+		CaFile       textinput.Model
 	}
 }
 
@@ -380,10 +381,17 @@ func (m newConnectionModel) complete() tea.Msg {
 	port, _ := strconv.ParseInt(m.Inputs.Port.Value(), 10, 32)
 	newModel := connection.NewModel(
 		connection.Data{
-			Name:     m.Inputs.Name.Value(),
-			Broker:   m.Inputs.Broker.Value(),
-			Port:     int(port),
-			ClientId: m.Inputs.ClientId.Value(),
+			Name:         m.Inputs.Name.Value(),
+			Broker:       m.Inputs.Broker.Value(),
+			Port:         int(port),
+			ClientId:     m.Inputs.ClientId.Value(),
+			Username:     m.Inputs.Username.Value(),
+			Password:     m.Inputs.Password.Value(),
+			UseTls:       m.Inputs.UseTls,
+			Authenticate: m.Inputs.Authenticate,
+			KeyFilePath:  m.Inputs.Keyfile.Value(),
+			CertFilePath: m.Inputs.Certfile.Value(),
+			CaFilePath:   m.Inputs.CaFile.Value(),
 		},
 		nil,
 	)
