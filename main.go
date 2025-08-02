@@ -1,7 +1,10 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path"
 	"reflect"
 	"strconv"
 	"strings"
@@ -49,19 +52,63 @@ type newConnectionModel struct {
 	}
 }
 
+const kConnectionSaveFileName = "connections.json"
+
+var gCacheDir string
+
 func main() {
+	err := initStorage()
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+
+	connections := make([]connection.Data, 0)
+	data, err := os.ReadFile(path.Join(gCacheDir, kConnectionSaveFileName))
+	if err != nil {
+		if os.IsNotExist(err) {
+			os.WriteFile(path.Join(gCacheDir, kConnectionSaveFileName), []byte("[]"), 0660)
+		} else {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	} else {
+		err = json.Unmarshal(data, &connections)
+		if err != nil {
+			fmt.Println(err)
+			os.Exit(1)
+		}
+	}
+
 	delegate := list.NewDefaultDelegate()
-	items := make([]list.Item, 0) // TODO: load conns from save file
+	items := make([]list.Item, 0)
+	for _, v := range connections {
+		items = append(items, connection.NewModel(v, nil))
+	}
 	conns := list.New(items, delegate, 10, 10)
 	conns.Title = "Connections"
 
 	model := model{connections: conns}
 	p := tea.NewProgram(model,
-		tea.WithAltScreen(), tea.WithReportFocus(), tea.WithoutCatchPanics())
-	_, err := p.Run()
+		tea.WithAltScreen(), tea.WithReportFocus())
+	_, err = p.Run()
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
+}
+
+func initStorage() error {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return fmt.Errorf("could not get user cache directory: %w", err)
+	}
+	gCacheDir = path.Join(cacheDir, "mqtt-tui")
+	err = os.MkdirAll(gCacheDir, 0777)
+	if err != nil {
+		return fmt.Errorf("could not create cache directory: %w", err)
+	}
+	return nil
 }
 
 func (m model) Init() tea.Cmd {
@@ -95,6 +142,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			m.connections.RemoveItem(m.connections.GlobalIndex())
+			m.saveConnections()
 		case "j":
 			m.connections.CursorDown()
 		case "k":
@@ -108,6 +156,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		items := m.connections.Items()
 		items = append(items, connection.Model(msg))
 		m.connections.SetItems(items)
+		m.saveConnections()
 	}
 
 	return m, nil
@@ -136,6 +185,21 @@ func (m model) View() string {
 		s, _ = charmutils.OverlayCenter(s, m.newConnection.View(), false)
 	}
 	return s
+}
+
+func (m model) saveConnections() {
+	connectionsData := make([]connection.Data, 0)
+	items := m.connections.Items()
+	for _, v := range items {
+		v, ok := v.(connection.Model)
+		if !ok {
+			continue
+		}
+		connectionsData = append(connectionsData, v.Data())
+	}
+
+	data, _ := json.MarshalIndent(connectionsData, "", "  ")
+	os.WriteFile(path.Join(gCacheDir, kConnectionSaveFileName), data, 0660)
 }
 
 func NewConnectionModel() newConnectionModel {
@@ -320,11 +384,14 @@ func (m newConnectionModel) View() string {
 func (m newConnectionModel) complete() tea.Msg {
 	port, _ := strconv.ParseInt(m.Inputs.Port.Value(), 10, 32)
 	newModel := connection.NewModel(
-		m.Inputs.Name.Value(),
-		m.Inputs.Broker.Value(),
-		int(port),
-		m.Inputs.ClientId.Value(),
+		connection.Data{
+			Name:     m.Inputs.Name.Value(),
+			Broker:   m.Inputs.Broker.Value(),
+			Port:     int(port),
+			ClientId: m.Inputs.ClientId.Value(),
+		},
 		nil,
 	)
+
 	return newConnectionMsg(newModel)
 }

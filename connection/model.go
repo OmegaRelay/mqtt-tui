@@ -41,11 +41,15 @@ type newSubModel struct {
 	cursor   int
 }
 
+type Data struct {
+	Name     string
+	Broker   string
+	Port     int
+	ClientId string
+}
+
 type Model struct {
-	name     string
-	broker   string
-	port     int
-	clientId string
+	data Data
 
 	client mqtt.Client
 
@@ -65,7 +69,7 @@ type Model struct {
 
 var spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 
-func NewModel(name, broker string, port int, clientID string, initSubs []subscription.Model) Model {
+func NewModel(data Data, initSubs []subscription.Model) Model {
 	delegate := list.NewDefaultDelegate()
 	items := make([]list.Item, 0)
 	if initSubs != nil {
@@ -79,10 +83,7 @@ func NewModel(name, broker string, port int, clientID string, initSubs []subscri
 	subs.SetShowTitle(false)
 
 	m := Model{
-		name:            name,
-		broker:          broker,
-		port:            port,
-		clientId:        clientID,
+		data:            data,
 		subscriptions:   subs,
 		hasConnected:    &atomic.Bool{},
 		connectionState: &atomic.Int32{},
@@ -94,8 +95,8 @@ func NewModel(name, broker string, port int, clientID string, initSubs []subscri
 	m.newSub.topic.Focus()
 
 	opts := mqtt.NewClientOptions()
-	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", m.broker, m.port))
-	opts.SetClientID(m.clientId)
+	opts.AddBroker(fmt.Sprintf("tcp://%s:%d", m.data.Broker, m.data.Port))
+	opts.SetClientID(m.data.ClientId)
 	opts.SetDefaultPublishHandler(m.onPubHandler)
 	opts.OnConnect = m.onConnectHandler
 	opts.OnConnectionLost = m.onConnectionLostHandler
@@ -108,9 +109,9 @@ func NewModel(name, broker string, port int, clientID string, initSubs []subscri
 	return m
 }
 
-func (m Model) Title() string       { return m.name }
-func (m Model) Description() string { return fmt.Sprintf("%s:%d", m.broker, m.port) }
-func (m Model) FilterValue() string { return m.name }
+func (m Model) Title() string       { return m.data.Name }
+func (m Model) Description() string { return fmt.Sprintf("%s:%d", m.data.Broker, m.data.Port) }
+func (m Model) FilterValue() string { return m.data.Name }
 
 func (m Model) onPubHandler(client mqtt.Client, msg mqtt.Message) {
 }
@@ -135,6 +136,10 @@ func (m Model) onConnectAttemptHandler(broker *url.URL, tlsCfg *tls.Config) *tls
 		m.connectionState.Store(connectionStateConnecting)
 	}
 	return tlsCfg
+}
+
+func (m Model) Data() Data {
+	return m.data
 }
 
 func (m Model) Init() tea.Cmd {
@@ -290,7 +295,7 @@ func (m Model) View() string {
 }
 
 func (m Model) connectingView() string {
-	return fmt.Sprintf("Connecting to broker on %s:%d%s", m.broker, m.port, m.spinner.View())
+	return fmt.Sprintf("Connecting to broker on %s:%d%s", m.data.Broker, m.data.Port, m.spinner.View())
 }
 
 func (m Model) defaultView(isBg bool) string {
@@ -310,10 +315,10 @@ func (m Model) defaultView(isBg bool) string {
 	l = borderStyle.Render(l)
 
 	broker := viewport.New(27, 1)
-	broker.SetContent(fmt.Sprintf("tcp://%s:%d", m.broker, m.port))
+	broker.SetContent(fmt.Sprintf("tcp://%s:%d", m.data.Broker, m.data.Port))
 	brokerView := borderStyle.Render(broker.View())
 	clientId := viewport.New(27, 1)
-	clientId.SetContent(m.clientId)
+	clientId.SetContent(m.data.ClientId)
 	clientIdView := borderStyle.Render(clientId.View())
 	leftView := lipgloss.JoinVertical(lipgloss.Top, brokerView, clientIdView, subsListView)
 
