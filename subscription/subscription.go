@@ -33,6 +33,11 @@ type Model struct {
 	messageIdx int
 }
 
+var FormatChoices = []string{
+	"none",
+	"json",
+}
+
 func NewModel(data Data) Model {
 	s := Model{
 		data:       data,
@@ -53,8 +58,10 @@ func (m Model) OnPubHandler(client mqtt.Client, msg mqtt.Message) {
 	switch m.data.Format {
 	case "json":
 		tmp := bytes.NewBuffer([]byte{})
-		json.Indent(tmp, data, "", "  ")
-		data = tmp.Bytes()
+		err := json.Indent(tmp, data, "", "  ")
+		if err == nil {
+			data = tmp.Bytes()
+		}
 	}
 
 	m.messagesMu.Lock()

@@ -44,9 +44,10 @@ type connectionStateChangeMsg struct {
 type NewSubMsg subscription.Model
 
 type newSubInputs struct {
-	Name  textinput.Model
-	Topic textinput.Model
-	Qos   form.MultipleChoice
+	Name   textinput.Model
+	Topic  textinput.Model
+	Qos    form.MultipleChoice
+	Format form.MultipleChoice
 }
 
 type newSubModel struct {
@@ -407,7 +408,8 @@ func (m Model) defaultView() string {
 func NewSubModel() newSubModel {
 	m := newSubModel{}
 	n := newSubInputs{
-		Qos: form.NewMultipleChoice(qosChoices),
+		Qos:    form.NewMultipleChoice(qosChoices),
+		Format: form.NewMultipleChoice(subscription.FormatChoices),
 	}
 	m.form = form.New("New Subscription", &n)
 	return m
@@ -441,9 +443,10 @@ func (m newSubModel) View() string {
 func (m newSubModel) newSubCmd() tea.Msg {
 	inputs := m.form.Inputs().(*newSubInputs)
 	sub := subscription.NewModel(subscription.Data{
-		Name:  inputs.Name.Value(),
-		Topic: inputs.Topic.Value(),
-		Qos:   byte(inputs.Qos.Index()),
+		Name:   inputs.Name.Value(),
+		Topic:  inputs.Topic.Value(),
+		Qos:    byte(inputs.Qos.Index()),
+		Format: inputs.Format.Selected(),
 	})
 	return NewSubMsg(sub)
 }

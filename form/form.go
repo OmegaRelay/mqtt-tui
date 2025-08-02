@@ -234,3 +234,7 @@ func (m Model) Inputs() any { return m.inputs }
 func (m MultipleChoice) Index() int {
 	return m.index
 }
+
+func (m MultipleChoice) Selected() string {
+	return m.choices[m.index]
+}
