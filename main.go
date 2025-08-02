@@ -227,36 +227,31 @@ func (m newConnectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			nrInputs := reflect.ValueOf(m.Inputs).NumField()
 			if m.cursor < nrInputs {
-				f, ok := reflect.ValueOf(m.Inputs).Field(m.cursor).Interface().(textinput.Model)
-				if !ok {
-					break
-				}
-				if f.Focused() {
-					f.Blur()
-					reflect.ValueOf(&m.Inputs).Elem().Field(m.cursor).Set(reflect.ValueOf(f))
-					break
-				} else {
-					mi := reflect.ValueOf(&m.Inputs).Elem()
-					for i := range mi.NumField() {
-						v := mi.Field(i)
-						switch v := v.Interface().(type) {
-						case textinput.Model:
-							if m.cursor == i {
+				mi := reflect.ValueOf(&m.Inputs).Elem()
+				for i := range mi.NumField() {
+					v := mi.Field(i)
+					switch v := v.Interface().(type) {
+					case textinput.Model:
+						if m.cursor == i {
+							if v.Focused() {
+								v.Blur()
+								reflect.ValueOf(&m.Inputs).Elem().Field(m.cursor).Set(reflect.ValueOf(v))
+							} else {
 								v.Focus()
 								mi.Field(i).Set(reflect.ValueOf(v))
-							} else {
-								v.Blur()
-								mi.Field(i).Set(reflect.ValueOf(v))
 							}
-						case bool:
-							if m.cursor == i {
-								if v {
-									tmp := false
-									mi.Field(i).SetBool(tmp)
-								} else {
-									tmp := true
-									mi.Field(i).SetBool(tmp)
-								}
+						} else {
+							v.Blur()
+							mi.Field(i).Set(reflect.ValueOf(v))
+						}
+					case bool:
+						if m.cursor == i {
+							if v {
+								tmp := false
+								mi.Field(i).SetBool(tmp)
+							} else {
+								tmp := true
+								mi.Field(i).SetBool(tmp)
 							}
 						}
 					}
