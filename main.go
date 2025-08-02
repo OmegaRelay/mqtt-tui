@@ -17,6 +17,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/term"
+	"github.com/google/uuid"
 )
 
 const title = `███╗   ███╗ ██████╗ ████████╗████████╗    ████████╗██╗   ██╗██╗
@@ -237,6 +238,7 @@ func (m newConnectionModel) View() string {
 func (m newConnectionModel) complete() tea.Msg {
 	inputs := m.form.Inputs().(*newConnectionInputs)
 	port, _ := strconv.ParseInt(inputs.Port.Value(), 10, 32)
+
 	newModel := connection.NewModel(
 		connection.Data{
 			Name:         inputs.Name.Value(),
@@ -250,6 +252,7 @@ func (m newConnectionModel) complete() tea.Msg {
 			KeyFilePath:  inputs.Keyfile.Value(),
 			CertFilePath: inputs.Certfile.Value(),
 			CaFilePath:   inputs.CaFile.Value(),
+			Id:           uuid.NewString(),
 		},
 		nil,
 	)

@@ -3,9 +3,11 @@ package connection
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
+	"path"
 	"sync/atomic"
 
 	"github.com/Broderick-Westrope/charmutils"
@@ -35,7 +37,7 @@ var qosChoices = []string{
 	"Exactly once",
 }
 
-type newSubMsg subscription.Model
+type NewSubMsg subscription.Model
 
 type newSubInputs struct {
 	Name  textinput.Model
@@ -48,6 +50,7 @@ type newSubModel struct {
 }
 
 type Data struct {
+	Id           string // UUID used to store subscriptions for persistence
 	Name         string
 	Broker       string
 	Port         int
@@ -62,8 +65,9 @@ type Data struct {
 }
 
 type Model struct {
-	data      Data
-	brokerUrl string
+	data         Data
+	brokerUrl    string
+	saveFileName string
 
 	client mqtt.Client
 
@@ -87,15 +91,19 @@ func NewModel(data Data, initSubs []subscription.Model) Model {
 		}
 	}
 
-	subs := list.New(items, delegate, 10, 10)
-	subs.SetShowTitle(false)
-
 	m := Model{
 		data:            data,
-		subscriptions:   subs,
+		subscriptions:   list.New(items, delegate, 10, 10),
 		hasConnected:    &atomic.Bool{},
 		connectionState: &atomic.Int32{},
 		spinner:         spinner.New(spinner.WithSpinner(spinner.Ellipsis), spinner.WithStyle(spinnerStyle)),
+	}
+	m.subscriptions.SetShowTitle(false)
+
+	var err error
+	m.saveFileName, err = initSaveFile(data.Id)
+	if err != nil {
+		panic(err)
 	}
 
 	opts := mqtt.NewClientOptions()
@@ -149,7 +157,54 @@ func NewModel(data Data, initSubs []subscription.Model) Model {
 	opts.AutoReconnect = true
 	m.client = mqtt.NewClient(opts)
 
+	subsData, err := os.ReadFile(m.saveFileName)
+	if err != nil {
+		return m
+	}
+
+	var subs []subscription.Data
+	err = json.Unmarshal(subsData, &subs)
+	if err != nil {
+		panic(err)
+	}
+
+	for _, sub := range subs {
+		newSub := subscription.NewModel(sub)
+		m.client.Subscribe(newSub.Data().Topic, newSub.Data().Qos, newSub.OnPubHandler)
+		items := m.subscriptions.Items()
+		items = append(items, newSub)
+		m.subscriptions.SetItems(items)
+	}
+
 	return m
+}
+
+func (m Model) saveSubscriptions() {
+	subscriptionsData := make([]subscription.Data, 0)
+	for _, v := range m.subscriptions.Items() {
+		v, ok := v.(subscription.Model)
+		if !ok {
+			continue
+		}
+		subscriptionsData = append(subscriptionsData, v.Data())
+	}
+
+	data, _ := json.MarshalIndent(subscriptionsData, "", "  ")
+	os.WriteFile(m.saveFileName, data, 0660)
+}
+
+func initSaveFile(id string) (string, error) {
+	cacheDir, err := os.UserCacheDir()
+	if err != nil {
+		return "", fmt.Errorf("could not get user cache directory: %w", err)
+	}
+	cacheDir = path.Join(cacheDir, "mqtt-tui")
+	err = os.MkdirAll(cacheDir, 0777)
+	if err != nil {
+		return "", fmt.Errorf("could not create cache directory: %w", err)
+	}
+	saveFilePath := path.Join(cacheDir, fmt.Sprintf("%s.json", id))
+	return saveFilePath, nil
 }
 
 func (m Model) Title() string       { return m.data.Name }
@@ -213,8 +268,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			sub := items[m.subscriptions.GlobalIndex()].(subscription.Model)
-			m.client.Unsubscribe(sub.Topic)
+			m.client.Unsubscribe(sub.Data().Topic)
 			m.subscriptions.RemoveItem(m.subscriptions.GlobalIndex())
+			m.saveSubscriptions()
 		case "j":
 			m.messageIdx = 0
 			m.subscriptions.CursorDown()
@@ -251,12 +307,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		default:
 			return m, nil
 		}
-	case newSubMsg:
+	case NewSubMsg:
 		newSub := subscription.Model(msg)
-		m.client.Subscribe(newSub.Topic, newSub.Qos, newSub.OnPubHandler)
+		m.client.Subscribe(newSub.Data().Topic, newSub.Data().Qos, newSub.OnPubHandler)
 		items := m.subscriptions.Items()
 		items = append(items, newSub)
 		m.subscriptions.SetItems(items)
+		m.saveSubscriptions()
 	}
 
 	var cmd tea.Cmd
@@ -314,14 +371,17 @@ func (m Model) defaultView() string {
 	subItems := m.subscriptions.Items()
 
 	if len(subItems) > 0 {
-		sub, _ := subItems[m.subscriptions.GlobalIndex()].(subscription.Model)
-		messages := sub.Messages()
-		messageNr.SetContent(fmt.Sprintf("%d/%d", min(m.messageIdx+1, len(messages)), len(messages)))
-		if len(messages) > 0 {
-			message := messages[m.messageIdx]
-			recvTopic.SetContent(string(message.RecvTopic()))
-			recvAt.SetContent(string(message.RecvAt().String()))
-			data.SetContent(string(message.Data()))
+		sub, ok := subItems[m.subscriptions.GlobalIndex()].(subscription.Model)
+		if ok {
+			messages := sub.Messages()
+			messageNr.SetContent(fmt.Sprintf("%d/%d", min(m.messageIdx+1, len(messages)), len(messages)))
+			if len(messages) > 0 {
+				message := messages[m.messageIdx]
+				recvTopic.SetContent(string(message.RecvTopic()))
+				recvAt.SetContent(string(message.RecvAt().String()))
+				data.SetContent(string(message.Data()))
+			}
+
 		}
 	}
 	recvTopicView := borderStyle.Render(recvTopic.View())
@@ -379,10 +439,11 @@ func (m newSubModel) View() string {
 }
 
 func (m newSubModel) newSubCmd() tea.Msg {
-	sub := subscription.NewModel()
 	inputs := m.form.Inputs().(*newSubInputs)
-	sub.Name = inputs.Name.Value()
-	sub.Topic = inputs.Topic.Value()
-	sub.Qos = byte(inputs.Qos.Index())
-	return newSubMsg(sub)
+	sub := subscription.NewModel(subscription.Data{
+		Name:  inputs.Name.Value(),
+		Topic: inputs.Topic.Value(),
+		Qos:   byte(inputs.Qos.Index()),
+	})
+	return NewSubMsg(sub)
 }

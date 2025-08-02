@@ -11,6 +11,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/term v0.2.1
 	github.com/eclipse/paho.mqtt.golang v1.5.0
+	github.com/google/uuid v1.6.0
 )
 
 require (

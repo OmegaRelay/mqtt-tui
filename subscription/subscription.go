@@ -15,18 +15,23 @@ type Message struct {
 	data      []byte
 }
 
+type Data struct {
+	Name   string
+	Topic  string
+	Qos    byte
+	Format string
+}
+
 type Model struct {
-	Name       string
-	Topic      string
-	Qos        byte
-	Format     string
+	data       Data
 	messages   chan []Message
 	messagesMu *sync.Mutex
 	messageIdx int
 }
 
-func NewModel() Model {
+func NewModel(data Data) Model {
 	s := Model{
+		data:       data,
 		messages:   make(chan []Message, 1),
 		messagesMu: &sync.Mutex{},
 	}
@@ -34,14 +39,14 @@ func NewModel() Model {
 	return s
 }
 
-func (m Model) Title() string       { return m.Name }
-func (m Model) Description() string { return m.Topic }
-func (m Model) FilterValue() string { return m.Topic }
+func (m Model) Title() string       { return m.data.Name }
+func (m Model) Description() string { return m.data.Topic }
+func (m Model) FilterValue() string { return m.data.Topic }
 
 func (m Model) OnPubHandler(client mqtt.Client, msg mqtt.Message) {
 	var data []byte
 	data = msg.Payload()
-	switch m.Format {
+	switch m.data.Format {
 	case "json":
 		tmp := bytes.NewBuffer([]byte{})
 		json.Indent(tmp, data, "", "  ")
@@ -70,6 +75,8 @@ func (m Model) Messages() []Message {
 
 	return messages
 }
+
+func (m Model) Data() Data { return m.data }
 
 func (m Message) RecvTopic() string { return m.recvTopic }
 func (m Message) RecvAt() time.Time { return m.recvAt }
