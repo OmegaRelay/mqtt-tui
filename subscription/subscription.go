@@ -6,8 +6,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/OmegaRelay/mqtt-tui/program"
+	tea "github.com/charmbracelet/bubbletea"
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 )
+
+type ReceivedMsg struct{}
 
 type Message struct {
 	recvTopic string
@@ -65,6 +69,7 @@ func (m Model) OnPubHandler(client mqtt.Client, msg mqtt.Message) {
 	messages = append([]Message{newMessage}, messages...)
 
 	m.messages <- messages
+	program.Program().Send(ReceivedCmd())
 }
 
 func (m Model) Messages() []Message {
@@ -81,3 +86,5 @@ func (m Model) Data() Data { return m.data }
 func (m Message) RecvTopic() string { return m.recvTopic }
 func (m Message) RecvAt() time.Time { return m.recvAt }
 func (m Message) Data() []byte      { return m.data }
+
+func ReceivedCmd() tea.Msg { return ReceivedMsg{} }

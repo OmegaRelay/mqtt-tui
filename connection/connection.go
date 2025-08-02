@@ -8,10 +8,10 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"sync/atomic"
 
 	"github.com/Broderick-Westrope/charmutils"
 	"github.com/OmegaRelay/mqtt-tui/form"
+	"github.com/OmegaRelay/mqtt-tui/program"
 	"github.com/OmegaRelay/mqtt-tui/styles"
 	"github.com/OmegaRelay/mqtt-tui/subscription"
 	"github.com/charmbracelet/bubbles/list"
@@ -25,7 +25,7 @@ import (
 )
 
 const (
-	connectionStateConnecting int32 = iota
+	connectionStateConnecting int = iota
 	connectionStateReconnecting
 	connectionStateConnected
 	connectionStateDisconnected
@@ -35,6 +35,10 @@ var qosChoices = []string{
 	"At most once",
 	"At least once",
 	"Exactly once",
+}
+
+type connectionStateChangeMsg struct {
+	connectionState int
 }
 
 type NewSubMsg subscription.Model
@@ -71,8 +75,7 @@ type Model struct {
 
 	client mqtt.Client
 
-	hasConnected    *atomic.Bool
-	connectionState *atomic.Int32
+	connectionState int
 	newSub          tea.Model
 	subscriptions   list.Model
 	messageIdx      int
@@ -82,21 +85,14 @@ type Model struct {
 
 var spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
 
-func NewModel(data Data, initSubs []subscription.Model) Model {
+func NewModel(data Data) Model {
 	delegate := list.NewDefaultDelegate()
 	items := make([]list.Item, 0)
-	if initSubs != nil {
-		for _, sub := range initSubs {
-			items = append(items, sub)
-		}
-	}
 
 	m := Model{
-		data:            data,
-		subscriptions:   list.New(items, delegate, 10, 10),
-		hasConnected:    &atomic.Bool{},
-		connectionState: &atomic.Int32{},
-		spinner:         spinner.New(spinner.WithSpinner(spinner.Ellipsis), spinner.WithStyle(spinnerStyle)),
+		data:          data,
+		subscriptions: list.New(items, delegate, 10, 10),
+		spinner:       spinner.New(spinner.WithSpinner(spinner.Ellipsis), spinner.WithStyle(spinnerStyle)),
 	}
 	m.subscriptions.SetShowTitle(false)
 
@@ -170,7 +166,6 @@ func NewModel(data Data, initSubs []subscription.Model) Model {
 
 	for _, sub := range subs {
 		newSub := subscription.NewModel(sub)
-		m.client.Subscribe(newSub.Data().Topic, newSub.Data().Qos, newSub.OnPubHandler)
 		items := m.subscriptions.Items()
 		items = append(items, newSub)
 		m.subscriptions.SetItems(items)
@@ -212,27 +207,24 @@ func (m Model) Description() string { return fmt.Sprintf("%s:%d", m.data.Broker,
 func (m Model) FilterValue() string { return m.data.Name }
 
 func (m Model) onPubHandler(client mqtt.Client, msg mqtt.Message) {
+	go program.Program().Send(subscription.ReceivedCmd)
 }
 
 func (m Model) onConnectHandler(client mqtt.Client) {
-	m.hasConnected.Store(true)
-	m.connectionState.Store(connectionStateConnected)
+	go program.Program().Send(connectionStateChangeMsg{connectionState: connectionStateConnected})
+
 }
 
 func (m Model) onConnectionLostHandler(client mqtt.Client, err error) {
-	m.connectionState.Store(connectionStateDisconnected)
+	go program.Program().Send(connectionStateChangeMsg{connectionState: connectionStateDisconnected})
 }
 
 func (m Model) onReconnectingHandler(client mqtt.Client, opts *mqtt.ClientOptions) {
-	m.connectionState.Store(connectionStateReconnecting)
+	go program.Program().Send(connectionStateChangeMsg{connectionState: connectionStateReconnecting})
 }
 
 func (m Model) onConnectAttemptHandler(broker *url.URL, tlsCfg *tls.Config) *tls.Config {
-	if m.hasConnected.Load() {
-		m.connectionState.Store(connectionStateReconnecting)
-	} else {
-		m.connectionState.Store(connectionStateConnecting)
-	}
+	go program.Program().Send(connectionStateChangeMsg{connectionState: connectionStateConnecting})
 	return tlsCfg
 }
 
@@ -302,10 +294,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messageIdx = min(len(messages)-1, m.messageIdx+1)
 			m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
 		case "esc":
-			m.hasConnected.Store(false)
 			return nil, nil
-		default:
-			return m, nil
 		}
 	case NewSubMsg:
 		newSub := subscription.Model(msg)
@@ -314,6 +303,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		items = append(items, newSub)
 		m.subscriptions.SetItems(items)
 		m.saveSubscriptions()
+	case connectionStateChangeMsg:
+		m.connectionState = msg.connectionState
+		if msg.connectionState == connectionStateConnected {
+			for _, model := range m.subscriptions.Items() {
+				sub, ok := model.(subscription.Model)
+				if ok {
+					m.client.Subscribe(sub.Data().Topic, sub.Data().Qos, sub.OnPubHandler)
+				}
+			}
+		}
 	}
 
 	var cmd tea.Cmd
@@ -322,9 +321,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-	state := m.connectionState.Load()
 
-	if state == connectionStateConnecting {
+	if m.connectionState == connectionStateConnecting {
 		return m.connectingView()
 	} else {
 		return m.defaultView()
