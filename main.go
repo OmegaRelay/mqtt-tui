@@ -10,6 +10,7 @@ import (
 	"github.com/Broderick-Westrope/charmutils"
 	"github.com/OmegaRelay/mqtt-tui/connection"
 	"github.com/OmegaRelay/mqtt-tui/form"
+	"github.com/OmegaRelay/mqtt-tui/program"
 	"github.com/OmegaRelay/mqtt-tui/styles"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -56,7 +57,10 @@ type newConnectionModel struct {
 
 const kConnectionSaveFileName = "connections.json"
 
-var gCacheDir string
+var (
+	gCacheDir string
+	gProgram  tea.Program
+)
 
 func main() {
 	err := initStorage()
@@ -85,15 +89,16 @@ func main() {
 	delegate := list.NewDefaultDelegate()
 	items := make([]list.Item, 0)
 	for _, v := range connections {
-		items = append(items, connection.NewModel(v, nil))
+		items = append(items, connection.NewModel(v))
 	}
 	conns := list.New(items, delegate, 10, 10)
 	conns.Title = "Connections"
 
 	model := model{connections: conns}
-	p := tea.NewProgram(model,
-		tea.WithAltScreen(), tea.WithReportFocus())
-	_, err = p.Run()
+	gProgram := tea.NewProgram(model,
+		tea.WithAltScreen(), tea.WithReportFocus(), tea.WithoutCatchPanics())
+	program.SetProgram(gProgram)
+	_, err = gProgram.Run()
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -254,7 +259,6 @@ func (m newConnectionModel) complete() tea.Msg {
 			CaFilePath:   inputs.CaFile.Value(),
 			Id:           uuid.NewString(),
 		},
-		nil,
 	)
 
 	return newConnectionMsg(newModel)
