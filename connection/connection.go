@@ -14,6 +14,8 @@ import (
 	"github.com/OmegaRelay/mqtt-tui/program"
 	"github.com/OmegaRelay/mqtt-tui/styles"
 	"github.com/OmegaRelay/mqtt-tui/subscription"
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -74,6 +76,9 @@ type Model struct {
 	brokerUrl    string
 	saveFileName string
 
+	keys keyMap
+	help help.Model
+
 	client mqtt.Client
 
 	connectionState int
@@ -94,8 +99,11 @@ func NewModel(data Data) Model {
 		data:          data,
 		subscriptions: list.New(items, delegate, 10, 10),
 		spinner:       spinner.New(spinner.WithSpinner(spinner.Ellipsis), spinner.WithStyle(spinnerStyle)),
+		keys:          keys,
+		help:          help.New(),
 	}
 	m.subscriptions.Title = "Subscriptions"
+	m.subscriptions.SetShowHelp(false)
 
 	var err error
 	m.saveFileName, err = initSaveFile(data.Id)
@@ -249,13 +257,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
+		switch {
+		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
-		case "a":
+		case key.Matches(msg, m.keys.Add):
 			m.newSub = NewSubModel()
 			return m, m.newSub.Init()
-		case "r":
+		case key.Matches(msg, m.keys.Remove):
 			items := m.subscriptions.Items()
 			if len(items) == 0 {
 				break
@@ -264,13 +272,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.client.Unsubscribe(sub.Data().Topic)
 			m.subscriptions.RemoveItem(m.subscriptions.GlobalIndex())
 			m.saveSubscriptions()
-		case "j":
+		case key.Matches(msg, m.keys.Down):
 			m.messageIdx = 0
 			m.subscriptions.CursorDown()
-		case "k":
+		case key.Matches(msg, m.keys.Up):
 			m.messageIdx = 0
 			m.subscriptions.CursorUp()
-		case "h":
+		case key.Matches(msg, m.keys.Next):
 			items := m.subscriptions.Items()
 			if len(items) == 0 {
 				break
@@ -282,7 +290,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.messageIdx = max(0, m.messageIdx-1)
 			m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
-		case "l":
+		case key.Matches(msg, m.keys.Prev):
 			items := m.subscriptions.Items()
 			if len(items) == 0 {
 				break
@@ -294,8 +302,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.messageIdx = min(len(messages)-1, m.messageIdx+1)
 			m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
-		case "esc":
+		case key.Matches(msg, m.keys.Escape):
 			return nil, nil
+		case key.Matches(msg, m.keys.Help):
+			m.help.ShowAll = !m.help.ShowAll
 		}
 	case NewSubMsg:
 		newSub := subscription.Model(msg)
@@ -342,6 +352,9 @@ func (m Model) defaultView() string {
 	if m.newSub != nil {
 		isBg = true
 	}
+	if m.help.ShowAll {
+		isBg = true
+	}
 
 	if isBg {
 		borderStyle = styles.BlurredBorderStyle
@@ -349,8 +362,8 @@ func (m Model) defaultView() string {
 		borderStyle = styles.FocusedBorderStyle
 	}
 
-	m.subscriptions.SetSize(styles.MenuWidth, height-10)
-	subListWidget := viewport.New(styles.MenuWidth, height-10)
+	m.subscriptions.SetSize(styles.MenuWidth, height-11)
+	subListWidget := viewport.New(styles.MenuWidth, height-11)
 	subListWidget.SetContent(m.subscriptions.View())
 	subsListView := borderStyle.Render(subListWidget.View())
 
@@ -368,7 +381,7 @@ func (m Model) defaultView() string {
 	recvTopic := viewport.New(width-(styles.MenuWidth+18), 1)
 	messageNr := viewport.New(7, 1)
 	recvAt := viewport.New(width-(styles.MenuWidth+9), 1)
-	data := viewport.New(width-(styles.MenuWidth+9), height-12)
+	data := viewport.New(width-(styles.MenuWidth+9), height-13)
 	subItems := m.subscriptions.Items()
 
 	if len(subItems) > 0 {
@@ -394,11 +407,14 @@ func (m Model) defaultView() string {
 	messagesView = borderStyle.Render(messagesView)
 
 	s := lipgloss.JoinHorizontal(lipgloss.Left, leftView, messagesView)
+	s = lipgloss.JoinVertical(lipgloss.Top, s, m.help.ShortHelpView(m.keys.ShortHelp()))
 
 	if isBg {
 		// add foreground widget
 		if m.newSub != nil {
 			s, _ = charmutils.OverlayCenter(s, m.newSub.View(), false)
+		} else if m.help.ShowAll {
+			s, _ = charmutils.OverlayCenter(s, styles.FocusedBorderStyle.Render(m.help.View(m.keys)), false)
 		}
 	}
 

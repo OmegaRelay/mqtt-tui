@@ -12,6 +12,8 @@ import (
 	"github.com/OmegaRelay/mqtt-tui/form"
 	"github.com/OmegaRelay/mqtt-tui/program"
 	"github.com/OmegaRelay/mqtt-tui/styles"
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -33,6 +35,9 @@ type model struct {
 	connections   list.Model
 	connection    tea.Model
 	newConnection tea.Model
+
+	keys keyMap
+	help help.Model
 }
 
 type newConnectionMsg connection.Model
@@ -93,8 +98,13 @@ func main() {
 	}
 	conns := list.New(items, delegate, 10, 10)
 	conns.Title = "Connections"
+	conns.SetShowHelp(false)
 
-	model := model{connections: conns}
+	model := model{
+		connections: conns,
+		keys:        keys,
+		help:        help.New(),
+	}
 	gProgram := tea.NewProgram(model,
 		tea.WithAltScreen(), tea.WithReportFocus(), tea.WithoutCatchPanics())
 	program.SetProgram(gProgram)
@@ -137,24 +147,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "ctrl+c", "q":
+		switch {
+		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
-		case "a":
+		case key.Matches(msg, m.keys.Add):
 			m.newConnection = NewConnectionModel()
 			return m, m.newConnection.Init()
-		case "r":
+		case key.Matches(msg, m.keys.Remove):
 			items := m.connections.Items()
 			if len(items) == 0 {
 				break
 			}
 			m.connections.RemoveItem(m.connections.GlobalIndex())
 			m.saveConnections()
-		case "j":
+		case key.Matches(msg, m.keys.Down):
 			m.connections.CursorDown()
-		case "k":
+		case key.Matches(msg, m.keys.Up):
 			m.connections.CursorUp()
-		case "enter":
+		case key.Matches(msg, m.keys.Select):
 			m.connection = m.connections.Items()[m.connections.GlobalIndex()].(connection.Model)
 			cmd := m.connection.Init()
 			return m, cmd
@@ -180,11 +190,11 @@ func (m model) View() string {
 	}
 
 	width, height, _ := term.GetSize(0)
-	m.connections.SetSize(styles.MenuWidth, height-11)
-	connectionsWidget := viewport.New(styles.MenuWidth, height-11)
+	m.connections.SetSize(styles.MenuWidth, height-12)
+	connectionsWidget := viewport.New(styles.MenuWidth, height-12)
 	connectionsWidget.SetContent(m.connections.View())
 
-	s := lipgloss.JoinVertical(lipgloss.Top, title, borderStyle.Render(connectionsWidget.View()))
+	s := lipgloss.JoinVertical(lipgloss.Top, title, borderStyle.Render(connectionsWidget.View()), m.help.View(m.keys))
 	widget := viewport.New(width-2, height-2)
 	widget.SetContent(s)
 	s = styles.FocusedBorderStyle.Render(widget.View())

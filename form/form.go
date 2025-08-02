@@ -5,14 +5,65 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
+
+type keyMap struct {
+	Select key.Binding
+	Next   key.Binding
+	Prev   key.Binding
+	Cancel key.Binding
+	Help   key.Binding
+	Quit   key.Binding
+}
+
+func (k keyMap) ShortHelp() []key.Binding {
+	return []key.Binding{k.Next, k.Prev, k.Select, k.Cancel, k.Help, k.Quit}
+}
+
+func (k keyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.Next, k.Prev}, // first column
+		{k.Help, k.Quit}, // second column
+	}
+}
+
+var keys = keyMap{
+	Next: key.NewBinding(
+		key.WithKeys("tab", "down", "j"),
+		key.WithHelp("↓/tab/j", "next"),
+	),
+	Prev: key.NewBinding(
+		key.WithKeys("shift+tab", "up", "k"),
+		key.WithHelp("↑/shift+tab/h", "previous"),
+	),
+	Select: key.NewBinding(
+		key.WithKeys("enter"),
+		key.WithHelp("enter", "select/cycle options"),
+	),
+	Cancel: key.NewBinding(
+		key.WithKeys("esc"),
+		key.WithHelp("esc", "cancel"),
+	),
+	Help: key.NewBinding(
+		key.WithKeys("?"),
+		key.WithHelp("?", "toggle help"),
+	),
+	Quit: key.NewBinding(
+		key.WithKeys("q", "ctrl+c"),
+		key.WithHelp("q/^c", "quit"),
+	),
+}
 
 type Model struct {
 	title  string
 	inputs any
 	cursor int
+	keys   keyMap
+	help   help.Model
 }
 
 type MultipleChoice struct {
@@ -36,6 +87,8 @@ func New(title string, inputs any) Model {
 	return Model{
 		title:  title,
 		inputs: inputs,
+		help:   help.New(),
+		keys:   keys,
 	}
 }
 
@@ -60,8 +113,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.String() {
-		case "enter":
+		switch {
+		case key.Matches(msg, m.keys.Select):
 			nrInputs := mi.NumField()
 			if m.cursor < nrInputs {
 				for i := range mi.NumField() {
@@ -104,7 +157,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				return m, submit
 			}
 
-		case "j":
+		case key.Matches(msg, m.keys.Next):
 			if m.cursor < mi.NumField() {
 				f, ok := mi.Field(m.cursor).Interface().(textinput.Model)
 				if ok && f.Focused() {
@@ -118,7 +171,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.cursor = nrInputs - 1
 			}
 
-		case "k":
+		case key.Matches(msg, m.keys.Prev):
 			if m.cursor < mi.NumField() {
 				f, ok := mi.Field(m.cursor).Interface().(textinput.Model)
 				if ok && f.Focused() {
@@ -131,9 +184,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 				m.cursor = 0
 			}
 
-		case " ":
-
-		case "esc":
+		case key.Matches(msg, m.keys.Cancel):
 			if m.cursor < mi.NumField() {
 				f, ok := mi.Field(m.cursor).Interface().(textinput.Model)
 				if ok && f.Focused() {
@@ -226,6 +277,9 @@ func (m Model) View() string {
 	} else {
 		content.WriteString("  submit  ")
 	}
+
+	content.WriteString("\n\n")
+	content.WriteString(m.help.View(m.keys))
 	return content.String()
 }
 
