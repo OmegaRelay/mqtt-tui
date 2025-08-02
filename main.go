@@ -5,12 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"reflect"
 	"strconv"
-	"strings"
 
 	"github.com/Broderick-Westrope/charmutils"
 	"github.com/OmegaRelay/mqtt-tui/connection"
+	"github.com/OmegaRelay/mqtt-tui/form"
 	"github.com/OmegaRelay/mqtt-tui/styles"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -36,21 +35,22 @@ type model struct {
 
 type newConnectionMsg connection.Model
 
+type newConnectionInputs struct {
+	Name         textinput.Model
+	ClientId     textinput.Model
+	Broker       textinput.Model
+	Port         textinput.Model
+	Username     textinput.Model
+	Password     textinput.Model
+	UseTls       bool
+	Authenticate bool
+	Keyfile      textinput.Model
+	Certfile     textinput.Model
+	CaFile       textinput.Model
+}
+
 type newConnectionModel struct {
-	cursor int
-	Inputs struct {
-		Name         textinput.Model
-		ClientId     textinput.Model
-		Broker       textinput.Model
-		Port         textinput.Model
-		Username     textinput.Model
-		Password     textinput.Model
-		UseTls       bool
-		Authenticate bool
-		Keyfile      textinput.Model
-		Certfile     textinput.Model
-		CaFile       textinput.Model
-	}
+	form form.Model
 }
 
 const kConnectionSaveFileName = "connections.json"
@@ -205,193 +205,51 @@ func (m model) saveConnections() {
 
 func NewConnectionModel() newConnectionModel {
 	m := newConnectionModel{}
-	mi := reflect.ValueOf(&m.Inputs).Elem()
-	for i := range mi.NumField() {
-		v := mi.Field(i)
-		_, ok := v.Interface().(textinput.Model)
-		if ok {
-			v.Set(reflect.ValueOf(textinput.New()))
-		}
-	}
-
+	m.form = form.New("New Connection", &newConnectionInputs{})
 	return m
 }
 
 func (m newConnectionModel) Init() tea.Cmd {
-	return textinput.Blink
+	return m.form.Init()
 }
 
 func (m newConnectionModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "enter":
-			nrInputs := reflect.ValueOf(m.Inputs).NumField()
-			if m.cursor < nrInputs {
-				mi := reflect.ValueOf(&m.Inputs).Elem()
-				for i := range mi.NumField() {
-					v := mi.Field(i)
-					switch v := v.Interface().(type) {
-					case textinput.Model:
-						if m.cursor == i {
-							if v.Focused() {
-								v.Blur()
-								reflect.ValueOf(&m.Inputs).Elem().Field(m.cursor).Set(reflect.ValueOf(v))
-							} else {
-								v.Focus()
-								mi.Field(i).Set(reflect.ValueOf(v))
-							}
-						} else {
-							v.Blur()
-							mi.Field(i).Set(reflect.ValueOf(v))
-						}
-					case bool:
-						if m.cursor == i {
-							if v {
-								tmp := false
-								mi.Field(i).SetBool(tmp)
-							} else {
-								tmp := true
-								mi.Field(i).SetBool(tmp)
-							}
-						}
-					}
-				}
-			} else if m.cursor == nrInputs { // cancel
-				return nil, nil
-			} else { // submit
-				return nil, m.complete
-			}
-
-		case "j":
-			if m.cursor < reflect.ValueOf(m.Inputs).NumField() {
-				f, ok := reflect.ValueOf(m.Inputs).Field(m.cursor).Interface().(textinput.Model)
-				if ok && f.Focused() {
-					break
-				}
-			}
-
-			m.cursor++
-			nrInputs := (reflect.ValueOf(m.Inputs).NumField() + 2)
-			if m.cursor >= nrInputs {
-				m.cursor = nrInputs - 1
-			}
-
-		case "k":
-			if m.cursor < reflect.ValueOf(m.Inputs).NumField() {
-				f, ok := reflect.ValueOf(m.Inputs).Field(m.cursor).Interface().(textinput.Model)
-				if ok && f.Focused() {
-					break
-				}
-			}
-
-			m.cursor--
-			if m.cursor < 0 {
-				m.cursor = 0
-			}
-
-		case " ":
-
-		case "esc":
-			if m.cursor < reflect.ValueOf(m.Inputs).NumField() {
-				f, ok := reflect.ValueOf(m.Inputs).Field(m.cursor).Interface().(textinput.Model)
-				if ok && f.Focused() {
-					f.SetValue("")
-					f.Blur()
-					reflect.ValueOf(&m.Inputs).Elem().Field(m.cursor).Set(reflect.ValueOf(f))
-					break
-				}
-			}
-			return nil, nil
-
-		}
-	}
-	cmds := make([]tea.Cmd, 0)
-	mi := reflect.ValueOf(&m.Inputs).Elem()
-	for i := range mi.NumField() {
-		v, ok := mi.Field(i).Interface().(textinput.Model)
-		if ok {
-			var cmd tea.Cmd
-			v, cmd = v.Update(msg)
-			cmds = append(cmds, cmd)
-			mi.Field(i).Set(reflect.ValueOf(v))
-
-		}
+	switch msg.(type) {
+	case form.SubmitMsg:
+		return nil, m.complete
+	case form.CancelMsg:
+		return nil, nil
 	}
 
-	return m, tea.Batch(cmds...)
+	var cmd tea.Cmd
+	m.form, cmd = m.form.Update(msg)
+	return m, cmd
 }
 
 func (m newConnectionModel) View() string {
-	var content strings.Builder
-
-	content.WriteString("New Connection\n")
-	mi := reflect.ValueOf(m.Inputs)
-	for i := range mi.NumField() {
-		t := mi.Type().Field(i)
-		v := mi.Field(i)
-
-		cursor := "   "
-		if m.cursor == i {
-			cursor = " > "
-		}
-		name := t.Name
-		input := v.Kind().String()
-
-		switch v.Kind() {
-		case reflect.Bool:
-			if v.Bool() {
-				input = "[x]"
-			} else {
-				input = "[ ]"
-			}
-		case reflect.Struct:
-			switch v := v.Interface().(type) {
-			case textinput.Model:
-				input = v.View()
-			}
-		default:
-			continue
-		}
-
-		content.WriteString(fmt.Sprintf("%s%s %s\n", cursor, name, input))
-	}
-	content.WriteString("\n")
-
-	if m.cursor == mi.NumField() {
-		content.WriteString(" [cancel] ")
-	} else {
-		content.WriteString("  cancel  ")
-	}
-
-	if m.cursor == (mi.NumField() + 1) {
-		content.WriteString(" [submit] ")
-	} else {
-		content.WriteString("  submit  ")
-	}
-
+	content := m.form.View()
 	width, _, _ := term.GetSize(0)
 	widget := viewport.New(width-4, 20)
-	widget.SetContent(content.String())
+	widget.SetContent(content)
 	return styles.FocusedBorderStyle.Render(widget.View())
-
 }
 
 func (m newConnectionModel) complete() tea.Msg {
-	port, _ := strconv.ParseInt(m.Inputs.Port.Value(), 10, 32)
+	inputs := m.form.Inputs().(*newConnectionInputs)
+	port, _ := strconv.ParseInt(inputs.Port.Value(), 10, 32)
 	newModel := connection.NewModel(
 		connection.Data{
-			Name:         m.Inputs.Name.Value(),
-			Broker:       m.Inputs.Broker.Value(),
+			Name:         inputs.Name.Value(),
+			Broker:       inputs.Broker.Value(),
 			Port:         int(port),
-			ClientId:     m.Inputs.ClientId.Value(),
-			Username:     m.Inputs.Username.Value(),
-			Password:     m.Inputs.Password.Value(),
-			UseTls:       m.Inputs.UseTls,
-			Authenticate: m.Inputs.Authenticate,
-			KeyFilePath:  m.Inputs.Keyfile.Value(),
-			CertFilePath: m.Inputs.Certfile.Value(),
-			CaFilePath:   m.Inputs.CaFile.Value(),
+			ClientId:     inputs.ClientId.Value(),
+			Username:     inputs.Username.Value(),
+			Password:     inputs.Password.Value(),
+			UseTls:       inputs.UseTls,
+			Authenticate: inputs.Authenticate,
+			KeyFilePath:  inputs.Keyfile.Value(),
+			CertFilePath: inputs.Certfile.Value(),
+			CaFilePath:   inputs.CaFile.Value(),
 		},
 		nil,
 	)

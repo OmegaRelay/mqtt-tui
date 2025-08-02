@@ -16,6 +16,7 @@ type Message struct {
 }
 
 type Model struct {
+	Name       string
 	Topic      string
 	Qos        byte
 	Format     string
@@ -33,8 +34,8 @@ func NewModel() Model {
 	return s
 }
 
-func (m Model) Title() string       { return m.Topic }
-func (m Model) Description() string { return "" }
+func (m Model) Title() string       { return m.Name }
+func (m Model) Description() string { return m.Topic }
 func (m Model) FilterValue() string { return m.Topic }
 
 func (m Model) OnPubHandler(client mqtt.Client, msg mqtt.Message) {

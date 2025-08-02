@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"strings"
 	"sync/atomic"
 
 	"github.com/Broderick-Westrope/charmutils"
+	"github.com/OmegaRelay/mqtt-tui/form"
 	"github.com/OmegaRelay/mqtt-tui/styles"
 	"github.com/OmegaRelay/mqtt-tui/subscription"
 	"github.com/charmbracelet/bubbles/list"
@@ -35,12 +35,16 @@ var qosChoices = []string{
 	"Exactly once",
 }
 
+type newSubMsg subscription.Model
+
+type newSubInputs struct {
+	Name  textinput.Model
+	Topic textinput.Model
+	Qos   form.MultipleChoice
+}
+
 type newSubModel struct {
-	model    subscription.Model
-	topic    textinput.Model
-	focusQos bool
-	qos      int
-	cursor   int
+	form form.Model
 }
 
 type Data struct {
@@ -65,16 +69,11 @@ type Model struct {
 
 	hasConnected    *atomic.Bool
 	connectionState *atomic.Int32
-	addNewSub       bool
-	newSub          newSubModel
+	newSub          tea.Model
 	subscriptions   list.Model
 	messageIdx      int
 	spinner         spinner.Model
-	subscritionIdx  int
-	windowSize      struct {
-		height int
-		width  int
-	}
+	subscriptionIdx int
 }
 
 var spinnerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("63"))
@@ -88,7 +87,6 @@ func NewModel(data Data, initSubs []subscription.Model) Model {
 		}
 	}
 
-	delegate.ShowDescription = false
 	subs := list.New(items, delegate, 10, 10)
 	subs.SetShowTitle(false)
 
@@ -99,9 +97,6 @@ func NewModel(data Data, initSubs []subscription.Model) Model {
 		connectionState: &atomic.Int32{},
 		spinner:         spinner.New(spinner.WithSpinner(spinner.Ellipsis), spinner.WithStyle(spinnerStyle)),
 	}
-	m.newSub.topic = textinput.New()
-	m.newSub.topic.Cursor.Blink = true
-	m.newSub.topic.Focus()
 
 	opts := mqtt.NewClientOptions()
 
@@ -196,140 +191,76 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.newSub != nil {
+		var cmd tea.Cmd
+		m.newSub, cmd = m.newSub.Update(msg)
+		return m, cmd
+	}
+
 	m.subscriptions.Update(msg)
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		_, cmd := m.handleBaseKey(msg)
-		if cmd != nil {
-			return m, cmd
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
+		case "a":
+			m.newSub = NewSubModel()
+			return m, m.newSub.Init()
+		case "r":
+			items := m.subscriptions.Items()
+			if len(items) == 0 {
+				break
+			}
+			sub := items[m.subscriptions.GlobalIndex()].(subscription.Model)
+			m.client.Unsubscribe(sub.Topic)
+			m.subscriptions.RemoveItem(m.subscriptions.GlobalIndex())
+		case "j":
+			m.messageIdx = 0
+			m.subscriptions.CursorDown()
+		case "k":
+			m.messageIdx = 0
+			m.subscriptions.CursorUp()
+		case "h":
+			items := m.subscriptions.Items()
+			if len(items) == 0 {
+				break
+			}
+			sub := items[m.subscriptions.GlobalIndex()].(subscription.Model)
+			messages := sub.Messages()
+			if len(messages) == 0 {
+				break
+			}
+			m.messageIdx = max(0, m.messageIdx-1)
+			m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
+		case "l":
+			items := m.subscriptions.Items()
+			if len(items) == 0 {
+				break
+			}
+			sub := items[m.subscriptions.GlobalIndex()].(subscription.Model)
+			messages := sub.Messages()
+			if len(messages) == 0 {
+				break
+			}
+			m.messageIdx = min(len(messages)-1, m.messageIdx+1)
+			m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
+		case "esc":
+			m.hasConnected.Store(false)
+			return nil, nil
+		default:
+			return m, nil
 		}
-		if m.addNewSub {
-			return m.handleAddSubKey(msg)
-		}
-		return m.handleDefaultKey(msg)
-	case tea.WindowSizeMsg:
-		m.windowSize.height = msg.Height
-		m.windowSize.width = msg.Width
-	}
-
-	if m.addNewSub {
-		var cmd tea.Cmd
-		if !m.newSub.focusQos {
-			m.newSub.topic, cmd = m.newSub.topic.Update(msg)
-		}
-		return m, cmd
+	case newSubMsg:
+		newSub := subscription.Model(msg)
+		m.client.Subscribe(newSub.Topic, newSub.Qos, newSub.OnPubHandler)
+		items := m.subscriptions.Items()
+		items = append(items, newSub)
+		m.subscriptions.SetItems(items)
 	}
 
 	var cmd tea.Cmd
 	m.spinner, cmd = m.spinner.Update(msg)
-	return m, cmd
-}
-
-func (m Model) handleBaseKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "ctrl+c", "q":
-		return m, tea.Quit
-	default:
-		return m, nil
-	}
-}
-
-func (m Model) handleDefaultKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd = nil
-	switch msg.String() {
-	case "a":
-		m.newSub.model = subscription.NewModel()
-		m.addNewSub = true
-		cmd = textinput.Blink
-	case "r":
-		items := m.subscriptions.Items()
-		if len(items) == 0 {
-			break
-		}
-		sub := items[m.subscriptions.GlobalIndex()].(subscription.Model)
-		m.client.Unsubscribe(sub.Topic)
-		m.subscriptions.RemoveItem(m.subscriptions.GlobalIndex())
-	case "j":
-		m.messageIdx = 0
-		m.subscriptions.CursorDown()
-	case "k":
-		m.messageIdx = 0
-		m.subscriptions.CursorUp()
-	case "h":
-		items := m.subscriptions.Items()
-		if len(items) == 0 {
-			break
-		}
-		sub := items[m.subscriptions.GlobalIndex()].(subscription.Model)
-		messages := sub.Messages()
-		if len(messages) == 0 {
-			break
-		}
-		m.messageIdx = max(0, m.messageIdx-1)
-		m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
-	case "l":
-		items := m.subscriptions.Items()
-		if len(items) == 0 {
-			break
-		}
-		sub := items[m.subscriptions.GlobalIndex()].(subscription.Model)
-		messages := sub.Messages()
-		if len(messages) == 0 {
-			break
-		}
-		m.messageIdx = min(len(messages)-1, m.messageIdx+1)
-		m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
-	case "esc":
-		m.hasConnected.Store(false)
-		return nil, nil
-	}
-	return m, cmd
-}
-
-func (m Model) handleAddSubKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "tab":
-		if m.newSub.focusQos {
-			m.newSub.focusQos = false
-		} else {
-			m.newSub.focusQos = true
-		}
-
-	case "j":
-		if m.newSub.focusQos {
-			m.newSub.cursor++
-			m.newSub.cursor %= len(qosChoices)
-		}
-	case "k":
-		if m.newSub.focusQos {
-			m.newSub.cursor--
-			if m.newSub.cursor < 0 {
-				m.newSub.cursor = 0
-			}
-		}
-	case " ":
-		if m.newSub.focusQos {
-			m.newSub.qos = m.newSub.cursor
-		}
-
-	case "enter":
-		m.newSub.model.Topic = m.newSub.topic.Value()
-		m.newSub.model.Qos = byte(m.newSub.qos)
-		items := m.subscriptions.Items()
-		items = append(items, m.newSub.model)
-		m.client.Subscribe(m.newSub.model.Topic, m.newSub.model.Qos, m.newSub.model.OnPubHandler)
-		m.subscriptions.SetItems(items)
-		m.addNewSub = false
-	case "esc":
-		m.newSub.model = subscription.NewModel()
-		m.newSub.topic.SetValue("")
-		m.addNewSub = false
-	}
-	var cmd tea.Cmd
-	if !m.newSub.focusQos {
-		m.newSub.topic, cmd = m.newSub.topic.Update(msg)
-	}
 	return m, cmd
 }
 
@@ -339,7 +270,7 @@ func (m Model) View() string {
 	if state == connectionStateConnecting {
 		return m.connectingView()
 	} else {
-		return m.defaultView(m.addNewSub)
+		return m.defaultView()
 	}
 }
 
@@ -347,9 +278,14 @@ func (m Model) connectingView() string {
 	return fmt.Sprintf("Connecting to broker on %s%s", m.brokerUrl, m.spinner.View())
 }
 
-func (m Model) defaultView(isBg bool) string {
+func (m Model) defaultView() string {
 	var borderStyle lipgloss.Style
 	width, height, _ := term.GetSize(0)
+
+	isBg := false
+	if m.newSub != nil {
+		isBg = true
+	}
 
 	if isBg {
 		borderStyle = styles.BlurredBorderStyle
@@ -400,7 +336,7 @@ func (m Model) defaultView(isBg bool) string {
 
 	if isBg {
 		// add foreground widget
-		if m.addNewSub {
+		if m.newSub != nil {
 			s, _ = charmutils.OverlayCenter(s, m.newSub.View(), false)
 		}
 	}
@@ -408,44 +344,45 @@ func (m Model) defaultView(isBg bool) string {
 	return styles.FocusedBorderStyle.Render(s)
 }
 
+func NewSubModel() newSubModel {
+	m := newSubModel{}
+	n := newSubInputs{
+		Qos: form.NewMultipleChoice(qosChoices),
+	}
+	m.form = form.New("New Subscription", &n)
+	return m
+}
+
 func (m newSubModel) Init() tea.Cmd {
-	return nil
+	return m.form.Init()
 }
 
 func (m newSubModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	return m, nil
+	switch msg.(type) {
+	case form.SubmitMsg:
+		return nil, m.newSubCmd
+	case form.CancelMsg:
+		return nil, nil
+	}
+
+	var cmd tea.Cmd
+	m.form, cmd = m.form.Update(msg)
+	return m, cmd
 }
 
 func (m newSubModel) View() string {
-	var content strings.Builder
-
-	content.WriteString("New Subscription\n\n")
-	content.WriteString("Topic\n")
-	if m.focusQos {
-		content.WriteString(m.topic.Value())
-	} else {
-		content.WriteString(m.topic.View())
-	}
-	content.WriteString("\n\n")
-	content.WriteString("QoS\n")
-
-	for i, choice := range qosChoices {
-		cursor := " "
-		if m.focusQos && m.cursor == i {
-			cursor = ">"
-		}
-
-		checked := " "
-		if i == m.qos {
-			checked = "x"
-		}
-
-		content.WriteString(fmt.Sprintf("%s [%s] %s\n", cursor, checked, choice))
-	}
-
+	content := m.form.View()
 	width, _, _ := term.GetSize(0)
-	widget := viewport.New(width-4, 9)
-	widget.SetContent(content.String())
+	widget := viewport.New(width-4, 20)
+	widget.SetContent(content)
 	return styles.FocusedBorderStyle.Render(widget.View())
+}
 
+func (m newSubModel) newSubCmd() tea.Msg {
+	sub := subscription.NewModel()
+	inputs := m.form.Inputs().(*newSubInputs)
+	sub.Name = inputs.Name.Value()
+	sub.Topic = inputs.Topic.Value()
+	sub.Qos = byte(inputs.Qos.Index())
+	return newSubMsg(sub)
 }
