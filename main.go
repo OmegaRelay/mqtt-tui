@@ -180,7 +180,8 @@ func (m model) View() string {
 	}
 
 	width, height, _ := term.GetSize(0)
-	connectionsWidget := viewport.New(27, height-11)
+	m.connections.SetSize(styles.MenuWidth, height-11)
+	connectionsWidget := viewport.New(styles.MenuWidth, height-11)
 	connectionsWidget.SetContent(m.connections.View())
 
 	s := lipgloss.JoinVertical(lipgloss.Top, title, borderStyle.Render(connectionsWidget.View()))

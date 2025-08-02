@@ -94,7 +94,7 @@ func NewModel(data Data) Model {
 		subscriptions: list.New(items, delegate, 10, 10),
 		spinner:       spinner.New(spinner.WithSpinner(spinner.Ellipsis), spinner.WithStyle(spinnerStyle)),
 	}
-	m.subscriptions.SetShowTitle(false)
+	m.subscriptions.Title = "Subscriptions"
 
 	var err error
 	m.saveFileName, err = initSaveFile(data.Id)
@@ -348,24 +348,26 @@ func (m Model) defaultView() string {
 		borderStyle = styles.FocusedBorderStyle
 	}
 
-	m.subscriptions.SetSize(27, height-12)
-	subsListView := borderStyle.Render(m.subscriptions.View())
+	m.subscriptions.SetSize(styles.MenuWidth, height-10)
+	subListWidget := viewport.New(styles.MenuWidth, height-10)
+	subListWidget.SetContent(m.subscriptions.View())
+	subsListView := borderStyle.Render(subListWidget.View())
 
-	l := lipgloss.Place(27, 6, lipgloss.Left, lipgloss.Top, "")
+	l := lipgloss.Place(styles.MenuWidth, 6, lipgloss.Left, lipgloss.Top, "")
 	l = borderStyle.Render(l)
 
-	broker := viewport.New(27, 1)
+	broker := viewport.New(styles.MenuWidth, 1)
 	broker.SetContent(m.brokerUrl)
 	brokerView := borderStyle.Render(broker.View())
-	clientId := viewport.New(27, 1)
+	clientId := viewport.New(styles.MenuWidth, 1)
 	clientId.SetContent(m.data.ClientId)
 	clientIdView := borderStyle.Render(clientId.View())
 	leftView := lipgloss.JoinVertical(lipgloss.Top, brokerView, clientIdView, subsListView)
 
-	recvTopic := viewport.New(width-44, 1)
+	recvTopic := viewport.New(width-(styles.MenuWidth+18), 1)
 	messageNr := viewport.New(7, 1)
-	recvAt := viewport.New(width-35, 1)
-	data := viewport.New(width-35, height-(6+6))
+	recvAt := viewport.New(width-(styles.MenuWidth+9), 1)
+	data := viewport.New(width-(styles.MenuWidth+9), height-12)
 	subItems := m.subscriptions.Items()
 
 	if len(subItems) > 0 {
