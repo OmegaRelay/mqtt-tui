@@ -302,6 +302,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.messageIdx = min(len(messages)-1, m.messageIdx+1)
 			m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
+		case key.Matches(msg, m.keys.JumpToNewest):
+			m.messageIdx = 0
 		case key.Matches(msg, m.keys.Escape):
 			return nil, nil
 		case key.Matches(msg, m.keys.Help):
