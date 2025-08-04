@@ -65,7 +65,6 @@ func (m Model) OnPubHandler(client mqtt.Client, msg mqtt.Message) {
 	}
 
 	m.messagesMu.Lock()
-	defer m.messagesMu.Unlock()
 	newMessage := Message{
 		recvTopic: msg.Topic(),
 		recvAt:    time.Now(),
@@ -74,16 +73,17 @@ func (m Model) OnPubHandler(client mqtt.Client, msg mqtt.Message) {
 
 	messages := <-m.messages
 	messages = append([]Message{newMessage}, messages...)
-
 	m.messages <- messages
+	m.messagesMu.Unlock()
+
 	program.Program().Send(ReceivedCmd())
 }
 
 func (m Model) Messages() []Message {
 	m.messagesMu.Lock()
+	defer m.messagesMu.Unlock()
 	messages := <-m.messages
 	m.messages <- messages
-	m.messagesMu.Unlock()
 
 	return messages
 }
