@@ -216,7 +216,7 @@ func (m Model) Description() string { return fmt.Sprintf("%s:%d", m.data.Broker,
 func (m Model) FilterValue() string { return m.data.Name }
 
 func (m Model) onPubHandler(client mqtt.Client, msg mqtt.Message) {
-	go program.Program().Send(subscription.ReceivedCmd)
+	go program.Program().Send(subscription.ReceivedMsg{})
 }
 
 func (m Model) onConnectHandler(client mqtt.Client) {
@@ -307,6 +307,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll
 		}
+
 	case NewSubMsg:
 		newSub := subscription.Model(msg)
 		m.client.Subscribe(newSub.Data().Topic, newSub.Data().Qos, newSub.OnPubHandler)
@@ -314,6 +315,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		items = append(items, newSub)
 		m.subscriptions.SetItems(items)
 		m.saveSubscriptions()
+
 	case connectionStateChangeMsg:
 		m.connectionState = msg.connectionState
 		if msg.connectionState == connectionStateConnected {
@@ -323,6 +325,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.client.Subscribe(sub.Data().Topic, sub.Data().Qos, sub.OnPubHandler)
 				}
 			}
+		}
+
+	case subscription.ReceivedMsg:
+		items := m.subscriptions.Items()
+		sub := items[m.subscriptions.GlobalIndex()].(subscription.Model)
+		if msg.Sub.Data().Name == sub.Data().Name && m.messageIdx != 0 {
+			messages := sub.Messages()
+			if len(messages) == 0 {
+				break
+			}
+			m.messageIdx = min(len(messages)-1, m.messageIdx+1)
 		}
 	}
 
@@ -395,7 +408,6 @@ func (m Model) defaultView() string {
 				recvAt.SetContent(string(message.RecvAt().String()))
 				data.SetContent(string(message.Data()))
 			}
-
 		}
 	}
 	recvTopicView := borderStyle.Render(recvTopic.View())
