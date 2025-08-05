@@ -301,6 +301,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.JumpToNewest):
 			m.messageIdx = 0
 		case key.Matches(msg, m.keys.Escape):
+			// deinit
+			for _, item := range m.subscriptions.Items() {
+				item, ok := item.(subscription.Model)
+				if !ok {
+					continue
+				}
+				item.Clear()
+			}
+			m.client.Disconnect(100)
 			return nil, nil
 		case key.Matches(msg, m.keys.Help):
 			m.help.ShowAll = !m.help.ShowAll

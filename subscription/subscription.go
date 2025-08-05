@@ -91,6 +91,16 @@ func (m Model) Messages() []Message {
 	return messages
 }
 
+// Clears all messages
+func (m Model) Clear() {
+	m.messagesMu.Lock()
+	defer m.messagesMu.Unlock()
+
+	messages := <-m.messages
+	messages = make([]Message, 0)
+	m.messages <- messages
+}
+
 func (m Model) Data() Data { return m.data }
 
 func (m Message) RecvTopic() string { return m.recvTopic }
