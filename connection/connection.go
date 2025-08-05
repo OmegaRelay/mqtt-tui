@@ -120,7 +120,6 @@ func NewModel(data Data) Model {
 	m.brokerUrl = fmt.Sprintf("%s%s:%d", protocol, m.data.Broker, m.data.Port)
 	opts.AddBroker(m.brokerUrl)
 	opts.SetClientID(m.data.ClientId)
-	opts.SetDefaultPublishHandler(m.onPubHandler)
 	if data.Username != "" {
 		opts.SetUsername(data.Username)
 	}
@@ -215,13 +214,8 @@ func (m Model) Title() string       { return m.data.Name }
 func (m Model) Description() string { return fmt.Sprintf("%s:%d", m.data.Broker, m.data.Port) }
 func (m Model) FilterValue() string { return m.data.Name }
 
-func (m Model) onPubHandler(client mqtt.Client, msg mqtt.Message) {
-	go program.Program().Send(subscription.ReceivedMsg{})
-}
-
 func (m Model) onConnectHandler(client mqtt.Client) {
 	go program.Program().Send(connectionStateChangeMsg{connectionState: connectionStateConnected})
-
 }
 
 func (m Model) onConnectionLostHandler(client mqtt.Client, err error) {
@@ -351,12 +345,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() string {
-
+	s := ""
 	if m.connectionState == connectionStateConnecting {
-		return m.connectingView()
+		s = m.connectingView()
 	} else {
-		return m.defaultView()
+		s = m.defaultView()
 	}
+	width, height, err := term.GetSize(0)
+	if err != nil {
+		program.SendErrorMsg(fmt.Errorf("failed to get terminal size: %w", err))
+		return ""
+	}
+	vp := viewport.New(width-2, height-2)
+	vp.SetContent(s)
+
+	return styles.FocusedBorderStyle.Render(vp.View())
 }
 
 func (m Model) connectingView() string {
@@ -436,7 +439,7 @@ func (m Model) defaultView() string {
 		}
 	}
 
-	return styles.FocusedBorderStyle.Render(s)
+	return s
 }
 
 func handleTokenErr(token mqtt.Token) {
