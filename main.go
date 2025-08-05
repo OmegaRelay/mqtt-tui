@@ -6,6 +6,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"time"
 
 	"github.com/Broderick-Westrope/charmutils"
 	"github.com/OmegaRelay/mqtt-tui/connection"
@@ -23,13 +24,15 @@ import (
 	"github.com/google/uuid"
 )
 
-const title = `███╗   ███╗ ██████╗ ████████╗████████╗    ████████╗██╗   ██╗██╗
+const kTitle = `███╗   ███╗ ██████╗ ████████╗████████╗    ████████╗██╗   ██╗██╗
 ████╗ ████║██╔═══██╗╚══██╔══╝╚══██╔══╝    ╚══██╔══╝██║   ██║██║
 ██╔████╔██║██║   ██║   ██║      ██║          ██║   ██║   ██║██║
 ██║╚██╔╝██║██║▄▄ ██║   ██║      ██║          ██║   ██║   ██║██║
 ██║ ╚═╝ ██║╚██████╔╝   ██║      ██║          ██║   ╚██████╔╝██║
 ╚═╝     ╚═╝ ╚══▀▀═╝    ╚═╝      ╚═╝          ╚═╝    ╚═════╝ ╚═╝
 `
+
+const kErrorPopupDuration = 10 * time.Second
 
 type model struct {
 	connections   list.Model
@@ -38,6 +41,9 @@ type model struct {
 
 	keys keyMap
 	help help.Model
+
+	err      error
+	errTimer *time.Timer
 }
 
 type newConnectionMsg connection.Model
@@ -108,6 +114,7 @@ func main() {
 	gProgram := tea.NewProgram(model,
 		tea.WithAltScreen(), tea.WithReportFocus(), tea.WithoutCatchPanics())
 	program.SetProgram(gProgram)
+
 	_, err = gProgram.Run()
 	if err != nil {
 		fmt.Println(err)
@@ -134,6 +141,21 @@ func (m model) Init() tea.Cmd {
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd = nil
+
+	switch msg := msg.(type) {
+	case program.ErrorMsg:
+		m.err = msg.Err
+		if m.err != nil {
+			if m.errTimer != nil {
+				m.errTimer.Stop()
+			}
+			m.errTimer = time.NewTimer(kErrorPopupDuration)
+			go func() {
+				<-m.errTimer.C
+				program.SendErrorMsg(nil)
+			}()
+		}
+	}
 
 	if m.connection != nil {
 		m.connection, cmd = m.connection.Update(msg)
@@ -169,6 +191,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd := m.connection.Init()
 			return m, cmd
 		}
+
 	case newConnectionMsg:
 		items := m.connections.Items()
 		items = append(items, connection.Model(msg))
@@ -180,27 +203,40 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
+	s := ""
 	if m.connection != nil {
-		return m.connection.View()
+		s = m.connection.View()
+	} else {
+		borderStyle := styles.FocusedBorderStyle
+		if m.newConnection != nil {
+			borderStyle = styles.BlurredBorderStyle
+		}
+
+		width, height, _ := term.GetSize(0)
+		m.connections.SetSize(styles.MenuWidth, height-12)
+		connectionsWidget := viewport.New(styles.MenuWidth, height-12)
+		connectionsWidget.SetContent(m.connections.View())
+
+		s = lipgloss.JoinVertical(lipgloss.Top, kTitle, borderStyle.Render(connectionsWidget.View()), m.help.View(m.keys))
+		widget := viewport.New(width-2, height-2)
+		widget.SetContent(s)
+		s = styles.FocusedBorderStyle.Render(widget.View())
+
+		if m.newConnection != nil {
+			s, _ = charmutils.OverlayCenter(s, m.newConnection.View(), false)
+		}
 	}
 
-	borderStyle := styles.FocusedBorderStyle
-	if m.newConnection != nil {
-		borderStyle = styles.BlurredBorderStyle
-	}
-
-	width, height, _ := term.GetSize(0)
-	m.connections.SetSize(styles.MenuWidth, height-12)
-	connectionsWidget := viewport.New(styles.MenuWidth, height-12)
-	connectionsWidget.SetContent(m.connections.View())
-
-	s := lipgloss.JoinVertical(lipgloss.Top, title, borderStyle.Render(connectionsWidget.View()), m.help.View(m.keys))
-	widget := viewport.New(width-2, height-2)
-	widget.SetContent(s)
-	s = styles.FocusedBorderStyle.Render(widget.View())
-
-	if m.newConnection != nil {
-		s, _ = charmutils.OverlayCenter(s, m.newConnection.View(), false)
+	if m.err != nil {
+		msg := "ERROR: " + m.err.Error()
+		errorWidget := viewport.New(len(msg), 1)
+		errorWidget.SetContent(msg)
+		errorView := styles.ErrorBorderStyle.Render(errorWidget.View())
+		row := (lipgloss.Height(s) - 3) - (lipgloss.Height(errorView) / 2)
+		row = max(0, row)
+		col := (lipgloss.Width(s) - lipgloss.Width(errorView)) / 2
+		col = max(0, col)
+		s, _ = charmutils.Overlay(s, errorView, row, col, false)
 	}
 	return s
 }

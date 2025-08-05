@@ -225,6 +225,7 @@ func (m Model) onConnectHandler(client mqtt.Client) {
 }
 
 func (m Model) onConnectionLostHandler(client mqtt.Client, err error) {
+	go program.SendErrorMsg(fmt.Errorf("lost connection: %w", err))
 	go program.Program().Send(connectionStateChangeMsg{connectionState: connectionStateDisconnected})
 }
 
@@ -242,7 +243,8 @@ func (m Model) Data() Data {
 }
 
 func (m Model) Init() tea.Cmd {
-	m.client.Connect()
+	token := m.client.Connect()
+	go handleTokenErr(token)
 	return m.spinner.Tick
 }
 
@@ -312,7 +314,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case NewSubMsg:
 		newSub := subscription.Model(msg)
-		m.client.Subscribe(newSub.Data().Topic, newSub.Data().Qos, newSub.OnPubHandler)
+		token := m.client.Subscribe(newSub.Data().Topic, newSub.Data().Qos, newSub.OnPubHandler)
+		go handleTokenErr(token)
 		items := m.subscriptions.Items()
 		items = append(items, newSub)
 		m.subscriptions.SetItems(items)
@@ -324,7 +327,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			for _, model := range m.subscriptions.Items() {
 				sub, ok := model.(subscription.Model)
 				if ok {
-					m.client.Subscribe(sub.Data().Topic, sub.Data().Qos, sub.OnPubHandler)
+					token := m.client.Subscribe(sub.Data().Topic, sub.Data().Qos, sub.OnPubHandler)
+					go handleTokenErr(token)
 				}
 			}
 		}
@@ -433,6 +437,14 @@ func (m Model) defaultView() string {
 	}
 
 	return styles.FocusedBorderStyle.Render(s)
+}
+
+func handleTokenErr(token mqtt.Token) {
+	<-token.Done()
+	err := token.Error()
+	if err != nil {
+		program.SendErrorMsg(err)
+	}
 }
 
 func NewSubModel() newSubModel {
