@@ -10,6 +10,7 @@ type keyMap struct {
 	Next         key.Binding
 	Prev         key.Binding
 	JumpToNewest key.Binding
+	OpenPublish  key.Binding
 	Escape       key.Binding
 	Help         key.Binding
 	Quit         key.Binding
@@ -22,7 +23,7 @@ func (k keyMap) ShortHelp() []key.Binding {
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Next, k.Prev, k.JumpToNewest},
-		{k.Add, k.Remove},
+		{k.Add, k.Remove, k.OpenPublish},
 		{k.Escape, k.Help, k.Quit},
 	}
 }
@@ -55,6 +56,10 @@ var keys = keyMap{
 	JumpToNewest: key.NewBinding(
 		key.WithKeys(" "),
 		key.WithHelp("space", "jumps to newest message"),
+	),
+	OpenPublish: key.NewBinding(
+		key.WithKeys("p"),
+		key.WithHelp("p", "opens publishing dialog"),
 	),
 	Escape: key.NewBinding(
 		key.WithKeys("esc"),
