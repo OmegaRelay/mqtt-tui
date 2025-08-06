@@ -409,9 +409,9 @@ func (m Model) defaultView() string {
 	clientIdView := borderStyle.Render(clientId.View())
 	leftView := lipgloss.JoinVertical(lipgloss.Top, brokerView, clientIdView, subsListView)
 
-	recvTopic := viewport.New(width-(styles.MenuWidth+18), 1)
-	messageNr := viewport.New(7, 1)
-	recvAt := viewport.New(width-(styles.MenuWidth+9), 1)
+	recvTopic := viewport.New(width-(styles.MenuWidth+19), 1)
+	messageNr := viewport.New(8, 4)
+	recvAt := viewport.New(width-(styles.MenuWidth+19), 1)
 	data := viewport.New(width-(styles.MenuWidth+9), height-13)
 	subItems := m.subscriptions.Items()
 
@@ -419,7 +419,12 @@ func (m Model) defaultView() string {
 		sub, ok := subItems[m.subscriptions.GlobalIndex()].(subscription.Model)
 		if ok {
 			messages := sub.Messages()
-			messageNr.SetContent(fmt.Sprintf("%d/%d", min(m.messageIdx+1, len(messages)), len(messages)))
+			content := lipgloss.NewStyle().
+				Align(lipgloss.Center, lipgloss.Center).
+				Width(messageNr.Width).
+				Height(messageNr.Height).
+				Render(fmt.Sprintf("%d\n/%d", min(m.messageIdx+1, len(messages)), len(messages)))
+			messageNr.SetContent(content)
 			if len(messages) > 0 {
 				message := messages[m.messageIdx]
 				recvTopic.SetContent(string(message.RecvTopic()))
@@ -429,11 +434,14 @@ func (m Model) defaultView() string {
 		}
 	}
 	recvTopicView := borderStyle.Render(recvTopic.View())
-	messageNrView := borderStyle.Render(messageNr.View())
-	messagesHeaderView := lipgloss.JoinHorizontal(lipgloss.Left, recvTopicView, messageNrView)
 	recvAtView := borderStyle.Render(recvAt.View())
+	messageNrView := borderStyle.Render(messageNr.View())
+
+	messagesHeaderView := lipgloss.JoinVertical(lipgloss.Left, recvTopicView, recvAtView)
+	messagesHeaderView = lipgloss.JoinHorizontal(lipgloss.Left, messagesHeaderView, messageNrView)
+
 	dataView := borderStyle.Render(data.View())
-	messagesView := lipgloss.JoinVertical(lipgloss.Top, messagesHeaderView, recvAtView, dataView)
+	messagesView := lipgloss.JoinVertical(lipgloss.Top, messagesHeaderView, dataView)
 	messagesView = borderStyle.Render(messagesView)
 
 	s := lipgloss.JoinHorizontal(lipgloss.Left, leftView, messagesView)
