@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -78,9 +79,11 @@ func New(title string, inputs any) Model {
 	mi := reflect.ValueOf(inputs).Elem()
 	for i := range mi.NumField() {
 		v := mi.Field(i)
-		_, ok := v.Interface().(textinput.Model)
-		if ok {
+		switch v.Interface().(type) {
+		case textinput.Model:
 			v.Set(reflect.ValueOf(textinput.New()))
+		case textarea.Model:
+			v.Set(reflect.ValueOf(textarea.New()))
 		}
 	}
 
@@ -124,15 +127,13 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 						if m.cursor == i {
 							if v.Focused() {
 								v.Blur()
-								mi.Field(m.cursor).Set(reflect.ValueOf(v))
 							} else {
 								v.Focus()
-								mi.Field(i).Set(reflect.ValueOf(v))
 							}
 						} else {
 							v.Blur()
-							mi.Field(i).Set(reflect.ValueOf(v))
 						}
+						mi.Field(i).Set(reflect.ValueOf(v))
 					case bool:
 						if m.cursor == i {
 							if v {
@@ -149,6 +150,19 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 							v.index %= len(v.choices)
 							mi.Field(i).Set(reflect.ValueOf(v))
 						}
+
+					case textarea.Model:
+						if m.cursor == i {
+							if v.Focused() {
+								v.Blur()
+							} else {
+								v.Focus()
+							}
+						} else {
+							v.Blur()
+						}
+						mi.Field(i).Set(reflect.ValueOf(v))
+
 					}
 				}
 			} else if m.cursor == nrInputs { // cancel
@@ -158,11 +172,21 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, m.keys.Next):
+			focused := false
 			if m.cursor < mi.NumField() {
-				f, ok := mi.Field(m.cursor).Interface().(textinput.Model)
-				if ok && f.Focused() {
-					break
+				switch f := mi.Field(m.cursor).Interface().(type) {
+				case textinput.Model:
+					if f.Focused() {
+						focused = true
+					}
+				case textarea.Model:
+					if f.Focused() {
+						focused = true
+					}
 				}
+			}
+			if focused {
+				break
 			}
 
 			m.cursor++
@@ -172,11 +196,21 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, m.keys.Prev):
+			focused := false
 			if m.cursor < mi.NumField() {
-				f, ok := mi.Field(m.cursor).Interface().(textinput.Model)
-				if ok && f.Focused() {
-					break
+				switch f := mi.Field(m.cursor).Interface().(type) {
+				case textinput.Model:
+					if f.Focused() {
+						focused = true
+					}
+				case textarea.Model:
+					if f.Focused() {
+						focused = true
+					}
 				}
+			}
+			if focused {
+				break
 			}
 
 			m.cursor--
@@ -200,13 +234,12 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 	cmds := make([]tea.Cmd, 0)
 	for i := range mi.NumField() {
-		v, ok := mi.Field(i).Interface().(textinput.Model)
+		v, ok := mi.Field(i).Interface().(tea.Model)
 		if ok {
 			var cmd tea.Cmd
 			v, cmd = v.Update(msg)
 			cmds = append(cmds, cmd)
 			mi.Field(i).Set(reflect.ValueOf(v))
-
 		}
 	}
 
@@ -257,6 +290,9 @@ func (m Model) View() string {
 					b.WriteString("\n")
 				}
 				input = b.String()
+			case textarea.Model:
+				input = ">-\n"
+				input += v.View()
 			}
 		default:
 			continue
