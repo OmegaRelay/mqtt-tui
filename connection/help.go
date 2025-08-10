@@ -5,6 +5,7 @@ import "github.com/charmbracelet/bubbles/key"
 type keyMap struct {
 	Add          key.Binding
 	Remove       key.Binding
+	Edit         key.Binding
 	Up           key.Binding
 	Down         key.Binding
 	Next         key.Binding
@@ -36,6 +37,10 @@ var keys = keyMap{
 	Remove: key.NewBinding(
 		key.WithKeys("r"),
 		key.WithHelp("r", "remove subscription"),
+	),
+	Edit: key.NewBinding(
+		key.WithKeys("e"),
+		key.WithHelp("e", "edit subscription"),
 	),
 	Up: key.NewBinding(
 		key.WithKeys("up", "k"),

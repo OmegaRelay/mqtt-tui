@@ -252,6 +252,10 @@ func (m MultipleChoice) Index() int {
 	return m.index
 }
 
+func (m *MultipleChoice) SetIndex(index int) {
+	m.index = index
+}
+
 func (m MultipleChoice) Selected() string {
 	return m.choices[m.index]
 }

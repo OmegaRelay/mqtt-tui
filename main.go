@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"reflect"
 	"strconv"
 	"time"
 
@@ -35,9 +36,10 @@ const kTitle = `███╗   ███╗ ██████╗ ████�
 const kErrorPopupDuration = 10 * time.Second
 
 type model struct {
-	connections   list.Model
-	connection    tea.Model
-	newConnection tea.Model
+	connections    list.Model
+	connection     tea.Model
+	newConnection  tea.Model
+	editConnection bool
 
 	keys keyMap
 	help help.Model
@@ -57,8 +59,8 @@ type newConnectionInputs struct {
 	Password     textinput.Model
 	UseTls       bool
 	Authenticate bool
-	Keyfile      textinput.Model
-	Certfile     textinput.Model
+	KeyFile      textinput.Model
+	CertFile     textinput.Model
 	CaFile       textinput.Model
 }
 
@@ -173,7 +175,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Add):
-			m.newConnection = NewConnectionModel()
+			m.newConnection = NewConnectionModel(nil)
 			return m, m.newConnection.Init()
 		case key.Matches(msg, m.keys.Remove):
 			items := m.connections.Items()
@@ -182,6 +184,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.connections.RemoveItem(m.connections.GlobalIndex())
 			m.saveConnections()
+		case key.Matches(msg, m.keys.Edit):
+			items := m.connections.Items()
+			conn := items[m.connections.GlobalIndex()].(connection.Model)
+			inputs := newConnectionInputs{}.Copy(conn)
+			m.newConnection = NewConnectionModel(&inputs)
+			m.editConnection = true
+			return m, m.newConnection.Init()
 		case key.Matches(msg, m.keys.Down):
 			m.connections.CursorDown()
 		case key.Matches(msg, m.keys.Up):
@@ -193,9 +202,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case newConnectionMsg:
-		items := m.connections.Items()
-		items = append(items, connection.Model(msg))
-		m.connections.SetItems(items)
+		if m.editConnection {
+			m.connections.SetItem(m.connections.GlobalIndex(), connection.Model(msg))
+		} else {
+			items := m.connections.Items()
+			items = append(items, connection.Model(msg))
+			m.connections.SetItems(items)
+		}
 		m.saveConnections()
 	}
 
@@ -256,9 +269,15 @@ func (m model) saveConnections() {
 	os.WriteFile(path.Join(gCacheDir, kConnectionSaveFileName), data, 0660)
 }
 
-func NewConnectionModel() newConnectionModel {
+func NewConnectionModel(inputs *newConnectionInputs) newConnectionModel {
 	m := newConnectionModel{}
-	m.form = form.New("New Connection", &newConnectionInputs{})
+	if inputs == nil {
+		inputs = &newConnectionInputs{}
+		m.form = form.New("New Connection", &newConnectionInputs{})
+	} else {
+		m.form = form.New("New Connection", nil)
+		m.form.SetInputs(inputs)
+	}
 	return m
 }
 
@@ -301,12 +320,38 @@ func (m newConnectionModel) complete() tea.Msg {
 			Password:     inputs.Password.Value(),
 			UseTls:       inputs.UseTls,
 			Authenticate: inputs.Authenticate,
-			KeyFilePath:  inputs.Keyfile.Value(),
-			CertFilePath: inputs.Certfile.Value(),
+			KeyFilePath:  inputs.KeyFile.Value(),
+			CertFilePath: inputs.CertFile.Value(),
 			CaFilePath:   inputs.CaFile.Value(),
 			Id:           uuid.NewString(),
 		},
 	)
 
 	return newConnectionMsg(newModel)
+}
+
+func (m newConnectionInputs) Copy(conn connection.Model) newConnectionInputs {
+	r := reflect.ValueOf(&m).Elem()
+	for i := range r.NumField() {
+		switch r.Field(i).Interface().(type) {
+		case textinput.Model:
+			r.Field(i).Set(reflect.ValueOf(textinput.New()))
+		}
+	}
+
+	data := conn.Data()
+
+	m.Name.SetValue(data.Name)
+	m.ClientId.SetValue(data.ClientId)
+	m.Broker.SetValue(data.Broker)
+	m.Port.SetValue(strconv.FormatInt(int64(data.Port), 10))
+	m.Username.SetValue(data.Username)
+	m.Password.SetValue(data.Password)
+	m.UseTls = data.UseTls
+	m.Authenticate = data.Authenticate
+	m.KeyFile.SetValue(data.KeyFilePath)
+	m.CertFile.SetValue(data.CertFilePath)
+	m.CaFile.SetValue(data.CaFilePath)
+
+	return m
 }

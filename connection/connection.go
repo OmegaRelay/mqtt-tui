@@ -77,6 +77,7 @@ type Model struct {
 	client mqtt.Client
 
 	connectionState int
+	editSub         bool
 	newSub          tea.Model
 	publish         tea.Model
 	subscriptions   list.Model
@@ -260,7 +261,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Quit):
 			return m, tea.Quit
 		case key.Matches(msg, m.keys.Add):
-			m.newSub = NewSubModel()
+			m.newSub = NewSubModel(nil)
 			return m, m.newSub.Init()
 		case key.Matches(msg, m.keys.Remove):
 			items := m.subscriptions.Items()
@@ -271,6 +272,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.client.Unsubscribe(sub.Data().Topic)
 			m.subscriptions.RemoveItem(m.subscriptions.GlobalIndex())
 			m.saveSubscriptions()
+		case key.Matches(msg, m.keys.Edit):
+			items := m.subscriptions.Items()
+			sub := items[m.subscriptions.GlobalIndex()].(subscription.Model)
+			inputs := newSubInputs{}.Copy(sub)
+			m.newSub = NewSubModel(&inputs)
+			m.editSub = true
+			return m, m.newSub.Init()
 		case key.Matches(msg, m.keys.Down):
 			m.messageIdx = 0
 			m.subscriptions.CursorDown()
@@ -333,9 +341,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		newSub := subscription.Model(msg)
 		token := m.client.Subscribe(newSub.Data().Topic, newSub.Data().Qos, newSub.OnPubHandler)
 		go handleTokenErr(token)
-		items := m.subscriptions.Items()
-		items = append(items, newSub)
-		m.subscriptions.SetItems(items)
+		if m.editSub {
+			m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), newSub)
+			m.editSub = false
+		} else {
+			items := m.subscriptions.Items()
+			items = append(items, newSub)
+			m.subscriptions.SetItems(items)
+		}
 		m.saveSubscriptions()
 
 	case connectionStateChangeMsg:
@@ -485,12 +498,20 @@ func handleTokenErr(token mqtt.Token) {
 	}
 }
 
-func NewSubModel() newSubModel {
+func NewSubModel(inputs *newSubInputs) newSubModel {
 	m := newSubModel{}
-	m.form = form.New("New Subscription", &newSubInputs{
-		Qos:    form.NewMultipleChoice(subscription.QosChoices()),
-		Format: form.NewMultipleChoice(subscription.FormatChoices),
-	})
+
+	if inputs == nil {
+		inputs = &newSubInputs{
+			Name:   textinput.New(),
+			Topic:  textinput.New(),
+			Qos:    form.NewMultipleChoice(subscription.QosChoices()),
+			Format: form.NewMultipleChoice(subscription.FormatChoices),
+		}
+	}
+
+	m.form = form.New("New Subscription", nil)
+	m.form.SetInputs(inputs)
 	return m
 }
 
@@ -528,4 +549,24 @@ func (m newSubModel) newSubCmd() tea.Msg {
 		Format: inputs.Format.Selected(),
 	})
 	return NewSubMsg(sub)
+}
+
+func (m newSubInputs) Copy(sub subscription.Model) newSubInputs {
+	data := sub.Data()
+	m.Name = textinput.New()
+	m.Name.SetValue(data.Name)
+
+	m.Topic = textinput.New()
+	m.Topic.SetValue(data.Topic)
+
+	m.Qos = form.NewMultipleChoice(subscription.QosChoices())
+	m.Qos.SetIndex(int(data.Qos))
+	m.Format = form.NewMultipleChoice(subscription.FormatChoices)
+	for i, v := range subscription.FormatChoices {
+		if data.Format != v {
+			continue
+		}
+		m.Format.SetIndex(i)
+	}
+	return m
 }
