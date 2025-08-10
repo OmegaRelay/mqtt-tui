@@ -38,7 +38,7 @@
 
 ## Changelog
 
-This project is WIP, once released; all notable changes to this project will be documented in this CHANGELOG.md file.
+All notable changes to this project will be documented in the CHANGELOG.md file.
  
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).

@@ -1,6 +1,7 @@
 package main
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -34,6 +35,7 @@ const kTitle = `███╗   ███╗ ██████╗ ████�
 `
 
 const kErrorPopupDuration = 10 * time.Second
+const kConnectionSaveFileName = "connections.json"
 
 type model struct {
 	connections    list.Model
@@ -68,12 +70,13 @@ type newConnectionModel struct {
 	form form.Model
 }
 
-const kConnectionSaveFileName = "connections.json"
-
 var (
 	gCacheDir string
 	gProgram  tea.Program
 )
+
+//go:embed VERSION
+var Version string
 
 func main() {
 	err := initStorage()
@@ -226,11 +229,11 @@ func (m model) View() string {
 		}
 
 		width, height, _ := term.GetSize(0)
-		m.connections.SetSize(styles.MenuWidth, height-12)
-		connectionsWidget := viewport.New(styles.MenuWidth, height-12)
+		m.connections.SetSize(styles.MenuWidth, height-13)
+		connectionsWidget := viewport.New(styles.MenuWidth, height-13)
 		connectionsWidget.SetContent(m.connections.View())
 
-		s = lipgloss.JoinVertical(lipgloss.Top, kTitle, borderStyle.Render(connectionsWidget.View()), m.help.View(m.keys))
+		s = lipgloss.JoinVertical(lipgloss.Top, kTitle, "v"+Version, borderStyle.Render(connectionsWidget.View()), m.help.View(m.keys))
 		widget := viewport.New(width-2, height-2)
 		widget.SetContent(s)
 		s = styles.FocusedBorderStyle.Render(widget.View())
