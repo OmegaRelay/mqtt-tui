@@ -10,10 +10,10 @@ import (
 	"path"
 
 	"github.com/Broderick-Westrope/charmutils"
+	"github.com/OmegaRelay/mqtt-tui/connection/subscription"
 	"github.com/OmegaRelay/mqtt-tui/form"
 	"github.com/OmegaRelay/mqtt-tui/program"
 	"github.com/OmegaRelay/mqtt-tui/styles"
-	"github.com/OmegaRelay/mqtt-tui/subscription"
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
