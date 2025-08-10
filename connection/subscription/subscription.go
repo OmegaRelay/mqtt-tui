@@ -39,6 +39,12 @@ var FormatChoices = []string{
 	"json",
 }
 
+var qosChoices = []string{
+	"At most once",
+	"At least once",
+	"Exactly once",
+}
+
 func NewModel(data Data) Model {
 	s := Model{
 		data:       data,
@@ -47,6 +53,10 @@ func NewModel(data Data) Model {
 	}
 	s.messages <- make([]Message, 0)
 	return s
+}
+
+func QosChoices() []string {
+	return qosChoices
 }
 
 func (m Model) Title() string       { return m.data.Name }

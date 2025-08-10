@@ -10,6 +10,7 @@ import (
 	"path"
 
 	"github.com/Broderick-Westrope/charmutils"
+	"github.com/OmegaRelay/mqtt-tui/connection/publish"
 	"github.com/OmegaRelay/mqtt-tui/connection/subscription"
 	"github.com/OmegaRelay/mqtt-tui/form"
 	"github.com/OmegaRelay/mqtt-tui/program"
@@ -32,12 +33,6 @@ const (
 	connectionStateConnected
 	connectionStateDisconnected
 )
-
-var qosChoices = []string{
-	"At most once",
-	"At least once",
-	"Exactly once",
-}
 
 type connectionStateChangeMsg struct {
 	connectionState int
@@ -83,6 +78,7 @@ type Model struct {
 
 	connectionState int
 	newSub          tea.Model
+	publish         tea.Model
 	subscriptions   list.Model
 	messageIdx      int
 	spinner         spinner.Model
@@ -243,7 +239,14 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.newSub != nil {
+
+	switch {
+	case m.publish != nil:
+		var cmd tea.Cmd
+		m.publish, cmd = m.publish.Update(msg)
+		return m, cmd
+
+	case m.newSub != nil:
 		var cmd tea.Cmd
 		m.newSub, cmd = m.newSub.Update(msg)
 		return m, cmd
@@ -300,6 +303,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.subscriptions.SetItem(m.subscriptions.GlobalIndex(), sub)
 		case key.Matches(msg, m.keys.JumpToNewest):
 			m.messageIdx = 0
+		case key.Matches(msg, m.keys.OpenPublish):
+			topics := make([]string, 0)
+			for _, sub := range m.subscriptions.Items() {
+				sub, ok := sub.(subscription.Model)
+				if !ok {
+					continue
+				}
+				topics = append(topics, sub.Data().Topic)
+			}
+			m.publish = publish.New(m.client, topics)
+			return m, m.publish.Init()
 		case key.Matches(msg, m.keys.Escape):
 			// deinit
 			for _, item := range m.subscriptions.Items() {
@@ -355,6 +369,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() string {
 	s := ""
+	if m.publish != nil {
+		return m.publish.View()
+	}
+
 	if m.connectionState == connectionStateConnecting {
 		s = m.connectingView()
 	} else {
@@ -469,11 +487,10 @@ func handleTokenErr(token mqtt.Token) {
 
 func NewSubModel() newSubModel {
 	m := newSubModel{}
-	n := newSubInputs{
-		Qos:    form.NewMultipleChoice(qosChoices),
+	m.form = form.New("New Subscription", &newSubInputs{
+		Qos:    form.NewMultipleChoice(subscription.QosChoices()),
 		Format: form.NewMultipleChoice(subscription.FormatChoices),
-	}
-	m.form = form.New("New Subscription", &n)
+	})
 	return m
 }
 

@@ -7,63 +7,21 @@ import (
 
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 )
-
-type keyMap struct {
-	Select key.Binding
-	Next   key.Binding
-	Prev   key.Binding
-	Cancel key.Binding
-	Help   key.Binding
-	Quit   key.Binding
-}
-
-func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Next, k.Prev, k.Select, k.Cancel, k.Help, k.Quit}
-}
-
-func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Next, k.Prev}, // first column
-		{k.Help, k.Quit}, // second column
-	}
-}
-
-var keys = keyMap{
-	Next: key.NewBinding(
-		key.WithKeys("tab", "down", "j"),
-		key.WithHelp("↓/tab/j", "next"),
-	),
-	Prev: key.NewBinding(
-		key.WithKeys("shift+tab", "up", "k"),
-		key.WithHelp("↑/shift+tab/h", "previous"),
-	),
-	Select: key.NewBinding(
-		key.WithKeys("enter"),
-		key.WithHelp("enter", "select/cycle options"),
-	),
-	Cancel: key.NewBinding(
-		key.WithKeys("esc"),
-		key.WithHelp("esc", "cancel"),
-	),
-	Help: key.NewBinding(
-		key.WithKeys("?"),
-		key.WithHelp("?", "toggle help"),
-	),
-	Quit: key.NewBinding(
-		key.WithKeys("q", "ctrl+c"),
-		key.WithHelp("q/^c", "quit"),
-	),
-}
 
 type Model struct {
 	title  string
 	inputs any
 	cursor int
-	keys   keyMap
-	help   help.Model
+
+	isTextInsert bool
+
+	keysInsert keyMapInsert
+	keysNormal keyMapNormal
+	help       help.Model
 }
 
 type MultipleChoice struct {
@@ -75,21 +33,30 @@ type SubmitMsg struct{}
 type CancelMsg struct{}
 
 func New(title string, inputs any) Model {
-	mi := reflect.ValueOf(inputs).Elem()
-	for i := range mi.NumField() {
-		v := mi.Field(i)
-		_, ok := v.Interface().(textinput.Model)
-		if ok {
-			v.Set(reflect.ValueOf(textinput.New()))
+	if inputs != nil {
+		mi := reflect.ValueOf(inputs).Elem()
+		for i := range mi.NumField() {
+			v := mi.Field(i)
+			switch v.Interface().(type) {
+			case textinput.Model:
+				v.Set(reflect.ValueOf(textinput.New()))
+			case textarea.Model:
+				v.Set(reflect.ValueOf(textarea.New()))
+			}
 		}
 	}
 
 	return Model{
-		title:  title,
-		inputs: inputs,
-		help:   help.New(),
-		keys:   keys,
+		title:      title,
+		inputs:     inputs,
+		help:       help.New(),
+		keysNormal: keysNormal,
+		keysInsert: keysInsert,
 	}
+}
+
+func (m *Model) SetInputs(inputs any) {
+	m.inputs = inputs
 }
 
 func NewMultipleChoice(choices []string) MultipleChoice {
@@ -111,102 +78,91 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	mi := reflect.ValueOf(m.inputs).Elem()
 
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch {
-		case key.Matches(msg, m.keys.Select):
-			nrInputs := mi.NumField()
-			if m.cursor < nrInputs {
-				for i := range mi.NumField() {
-					v := mi.Field(i)
-					switch v := v.Interface().(type) {
-					case textinput.Model:
-						if m.cursor == i {
-							if v.Focused() {
-								v.Blur()
-								mi.Field(m.cursor).Set(reflect.ValueOf(v))
-							} else {
-								v.Focus()
-								mi.Field(i).Set(reflect.ValueOf(v))
-							}
-						} else {
-							v.Blur()
-							mi.Field(i).Set(reflect.ValueOf(v))
-						}
-					case bool:
-						if m.cursor == i {
-							if v {
-								tmp := false
-								mi.Field(i).SetBool(tmp)
-							} else {
-								tmp := true
-								mi.Field(i).SetBool(tmp)
-							}
-						}
-					case MultipleChoice:
-						if m.cursor == i {
-							v.index++
-							v.index %= len(v.choices)
-							mi.Field(i).Set(reflect.ValueOf(v))
-						}
-					}
-				}
-			} else if m.cursor == nrInputs { // cancel
-				return m, cancel
-			} else { // submit
-				return m, submit
-			}
-
-		case key.Matches(msg, m.keys.Next):
-			if m.cursor < mi.NumField() {
-				f, ok := mi.Field(m.cursor).Interface().(textinput.Model)
-				if ok && f.Focused() {
-					break
-				}
-			}
-
-			m.cursor++
-			nrInputs := (mi.NumField() + 2)
-			if m.cursor >= nrInputs {
-				m.cursor = nrInputs - 1
-			}
-
-		case key.Matches(msg, m.keys.Prev):
-			if m.cursor < mi.NumField() {
-				f, ok := mi.Field(m.cursor).Interface().(textinput.Model)
-				if ok && f.Focused() {
-					break
-				}
-			}
-
-			m.cursor--
-			if m.cursor < 0 {
-				m.cursor = 0
-			}
-
-		case key.Matches(msg, m.keys.Cancel):
-			if m.cursor < mi.NumField() {
-				f, ok := mi.Field(m.cursor).Interface().(textinput.Model)
-				if ok && f.Focused() {
-					f.SetValue("")
-					f.Blur()
-					mi.Field(m.cursor).Set(reflect.ValueOf(f))
-					break
-				}
-			}
-			return m, cancel
-
-		}
-	}
 	cmds := make([]tea.Cmd, 0)
 	for i := range mi.NumField() {
-		v, ok := mi.Field(i).Interface().(textinput.Model)
-		if ok {
+		switch v := mi.Field(i).Interface().(type) {
+		case textinput.Model:
 			var cmd tea.Cmd
 			v, cmd = v.Update(msg)
 			cmds = append(cmds, cmd)
 			mi.Field(i).Set(reflect.ValueOf(v))
+		case textarea.Model:
+			var cmd tea.Cmd
+			v, cmd = v.Update(msg)
+			cmds = append(cmds, cmd)
+			mi.Field(i).Set(reflect.ValueOf(v))
+		}
+	}
 
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		if m.isTextInsert {
+			switch {
+			case key.Matches(msg, m.keysInsert.Exit):
+				v := mi.Field(m.cursor)
+				switch v := v.Interface().(type) {
+				case textinput.Model:
+					v.Blur()
+					mi.Field(m.cursor).Set(reflect.ValueOf(v))
+				case textarea.Model:
+					v.Blur()
+					mi.Field(m.cursor).Set(reflect.ValueOf(v))
+				}
+				m.isTextInsert = false
+			}
+		} else {
+			switch {
+			case key.Matches(msg, m.keysNormal.Insert):
+				nrInputs := mi.NumField()
+				if m.cursor < nrInputs {
+					for i := range mi.NumField() {
+						v := mi.Field(i)
+						switch v := v.Interface().(type) {
+						case textinput.Model:
+							if m.cursor == i {
+								v.Focus()
+								m.isTextInsert = true
+							}
+							mi.Field(i).Set(reflect.ValueOf(v))
+						case bool:
+							if m.cursor == i {
+								tmp := !v
+								mi.Field(i).SetBool(tmp)
+							}
+						case MultipleChoice:
+							if m.cursor == i {
+								v.index++
+								v.index %= len(v.choices)
+								mi.Field(i).Set(reflect.ValueOf(v))
+							}
+
+						case textarea.Model:
+							if m.cursor == i {
+								v.Focus()
+								m.isTextInsert = true
+							}
+							mi.Field(i).Set(reflect.ValueOf(v))
+						}
+					}
+				} else if m.cursor == nrInputs { // cancel
+					return m, cancel
+				} else { // submit
+					return m, submit
+				}
+
+			case key.Matches(msg, m.keysNormal.Next):
+				m.cursor++
+				nrInputs := (mi.NumField() + 2)
+				if m.cursor >= nrInputs {
+					m.cursor = nrInputs - 1
+				}
+
+			case key.Matches(msg, m.keysNormal.Prev):
+				m.cursor--
+				if m.cursor < 0 {
+					m.cursor = 0
+				}
+			}
 		}
 	}
 
@@ -257,6 +213,9 @@ func (m Model) View() string {
 					b.WriteString("\n")
 				}
 				input = b.String()
+			case textarea.Model:
+				input = ">-\n"
+				input += v.View()
 			}
 		default:
 			continue
@@ -279,7 +238,11 @@ func (m Model) View() string {
 	}
 
 	content.WriteString("\n\n")
-	content.WriteString(m.help.View(m.keys))
+	if m.isTextInsert {
+		content.WriteString(m.help.View(m.keysInsert))
+	} else {
+		content.WriteString(m.help.View(m.keysNormal))
+	}
 	return content.String()
 }
 
