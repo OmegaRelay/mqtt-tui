@@ -28,14 +28,22 @@ type Model struct {
 	form form.Model
 }
 
-func New(cl mqtt.Client) Model {
+func New(cl mqtt.Client, suggestedTopics []string) Model {
 	m := Model{
 		client: cl,
 
-		form: form.New("Publish Message", &inputs{
-			QoS: form.NewMultipleChoice(subscription.QosChoices()),
-		}),
+		form: form.New("Publish Message", nil),
 	}
+	i := inputs{
+		Topic:   textinput.New(),
+		QoS:     form.NewMultipleChoice(subscription.QosChoices()),
+		Message: textarea.New(),
+	}
+	if suggestedTopics != nil {
+		i.Topic.ShowSuggestions = true
+		i.Topic.SetSuggestions(suggestedTopics)
+	}
+	m.form.SetInputs(&i)
 	return m
 }
 

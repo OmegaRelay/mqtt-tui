@@ -304,7 +304,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.JumpToNewest):
 			m.messageIdx = 0
 		case key.Matches(msg, m.keys.OpenPublish):
-			m.publish = publish.New(m.client)
+			topics := make([]string, 0)
+			for _, sub := range m.subscriptions.Items() {
+				sub, ok := sub.(subscription.Model)
+				if !ok {
+					continue
+				}
+				topics = append(topics, sub.Data().Topic)
+			}
+			m.publish = publish.New(m.client, topics)
 			return m, m.publish.Init()
 		case key.Matches(msg, m.keys.Escape):
 			// deinit

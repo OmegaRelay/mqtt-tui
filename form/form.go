@@ -33,14 +33,16 @@ type SubmitMsg struct{}
 type CancelMsg struct{}
 
 func New(title string, inputs any) Model {
-	mi := reflect.ValueOf(inputs).Elem()
-	for i := range mi.NumField() {
-		v := mi.Field(i)
-		switch v.Interface().(type) {
-		case textinput.Model:
-			v.Set(reflect.ValueOf(textinput.New()))
-		case textarea.Model:
-			v.Set(reflect.ValueOf(textarea.New()))
+	if inputs != nil {
+		mi := reflect.ValueOf(inputs).Elem()
+		for i := range mi.NumField() {
+			v := mi.Field(i)
+			switch v.Interface().(type) {
+			case textinput.Model:
+				v.Set(reflect.ValueOf(textinput.New()))
+			case textarea.Model:
+				v.Set(reflect.ValueOf(textarea.New()))
+			}
 		}
 	}
 
@@ -51,6 +53,10 @@ func New(title string, inputs any) Model {
 		keysNormal: keysNormal,
 		keysInsert: keysInsert,
 	}
+}
+
+func (m *Model) SetInputs(inputs any) {
+	m.inputs = inputs
 }
 
 func NewMultipleChoice(choices []string) MultipleChoice {
