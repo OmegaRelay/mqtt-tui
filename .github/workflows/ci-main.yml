@@ -1,0 +1,57 @@
+name: build
+
+on:
+  push:
+    branches: [ "main" ]
+
+
+jobs:
+  build-macos-arm64:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: darwin
+      target_arch: arm64
+  build-macos-x64:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: darwin
+      target_arch: amd64
+
+
+  build-linux-arm:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: linux
+      target_arch: arm
+  build-linux-arm64:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: linux
+      target_arch: arm64
+  build-linux-x64:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: linux
+      target_arch: amd64
+  build-linux-x86:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: linux
+      target_arch: 386
+
+  build-windows-arm64:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: windows
+      target_arch: arm64
+  build-windows-x64:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: windows
+      target_arch: amd64
+  build-windows-x86:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: windows
+      target_arch: 386
+

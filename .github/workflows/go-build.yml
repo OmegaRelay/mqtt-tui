@@ -1,0 +1,36 @@
+name: go build
+
+on:
+  workflow_call:
+    inputs:
+      target_os:
+        type: string
+        required: true
+      target_arch:
+        type: string
+        required: true
+
+jobs:
+  build:
+    env:
+      GOOS: ${{ inputs.target_os }}
+      GOARCH: ${{ inputs.target_arch }}
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.23'
+
+    - name: Build
+      run: go build -o ${GOOS}-${GOARCH}/
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4.3.6
+      with:
+        name: ${{ env.GOOS }}-${{ env.GOARCH }}
+        path: ${{ env.GOOS }}-${{ env.GOARCH }}
+        if-no-files-found: "error"
+

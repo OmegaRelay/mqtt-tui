@@ -1,0 +1,173 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-macos-arm64:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: darwin
+      target_arch: arm64
+  build-macos-x64:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: darwin
+      target_arch: amd64
+
+
+  build-linux-arm:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: linux
+      target_arch: arm
+  build-linux-arm64:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: linux
+      target_arch: arm64
+  build-linux-x64:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: linux
+      target_arch: amd64
+  build-linux-x86:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: linux
+      target_arch: 386
+
+  build-windows-arm64:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: windows
+      target_arch: arm64
+  build-windows-x64:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: windows
+      target_arch: amd64
+  build-windows-x86:
+    uses: ./.github/workflows/go-build.yml
+    with:
+      target_os: windows
+      target_arch: 386
+
+
+  create_release:
+    name: Create Release
+    needs:
+      - build-macos-arm64
+      - build-macos-x64
+      - build-linux-arm
+      - build-linux-arm64
+      - build-linux-x64
+      - build-linux-x86
+      - build-windows-arm64
+      - build-windows-x64
+      - build-windows-x86
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - id: get_version
+        uses: battila7/get-version-action@v2
+      - name: release
+        uses: actions/create-release@v1
+        id: create_release
+        with:
+          draft: false
+          prerelease: false
+          release_name: ${{ steps.get_version.outputs.version }}
+          tag_name: ${{ github.ref }}
+          body_path: CHANGELOG.md
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  upload_macos_arm64:
+    name: Upload Darwin/Arm64
+    needs:
+      - create_release
+    uses: ./.github/workflows/add-artifact-to-release.yml
+    with:
+      release_upload_url: ${{ needs.create_release.outputs.upload_url }}
+      artifact_name: darwin-arm64
+
+  upload_macos_x64:
+    name: Upload Darwin/Amd64
+    needs:
+      - create_release
+    uses: ./.github/workflows/add-artifact-to-release.yml
+    with:
+      release_upload_url: ${{ needs.create_release.outputs.upload_url }}
+      artifact_name: darwin-amd64
+
+  upload_linux_arm64:
+    name: Upload Linux/Arm64
+    needs:
+      - create_release
+    uses: ./.github/workflows/add-artifact-to-release.yml
+    with:
+      release_upload_url: ${{ needs.create_release.outputs.upload_url }}
+      artifact_name: linux-arm64
+
+  upload_linux_arm:
+    name: Upload Linux/Arm
+    needs:
+      - create_release
+    uses: ./.github/workflows/add-artifact-to-release.yml
+    with:
+      release_upload_url: ${{ needs.create_release.outputs.upload_url }}
+      artifact_name: linux-arm
+
+  upload_linux_x64:
+    name: Upload Linux/Amd64
+    needs:
+      - create_release
+    uses: ./.github/workflows/add-artifact-to-release.yml
+    with:
+      release_upload_url: ${{ needs.create_release.outputs.upload_url }}
+      artifact_name: linux-amd64
+
+  upload_linux_x86:
+    name: Upload Linux/386
+    needs:
+      - create_release
+    uses: ./.github/workflows/add-artifact-to-release.yml
+    with:
+      release_upload_url: ${{ needs.create_release.outputs.upload_url }}
+      artifact_name: linux-386
+
+  upload_windows_arm64:
+    name: Upload Windows/Arm64
+    needs:
+      - create_release
+    uses: ./.github/workflows/add-artifact-to-release.yml
+    with:
+      release_upload_url: ${{ needs.create_release.outputs.upload_url }}
+      artifact_name: windows-arm64
+
+  upload_windows_x64:
+    name: Upload Windows/Amd64
+    needs:
+      - create_release
+    uses: ./.github/workflows/add-artifact-to-release.yml
+    with:
+      release_upload_url: ${{ needs.create_release.outputs.upload_url }}
+      artifact_name: windows-amd64
+
+  upload_windows_x86:
+    name: Upload Windows/386
+    needs:
+      - create_release
+    uses: ./.github/workflows/add-artifact-to-release.yml
+    with:
+      release_upload_url: ${{ needs.create_release.outputs.upload_url }}
+      artifact_name: windows-386
+
